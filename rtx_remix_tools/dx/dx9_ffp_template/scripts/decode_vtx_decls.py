@@ -66,6 +66,9 @@ def va_to_offset(sections, image_base, va):
     return None
 
 
+MAX_ELEMENTS = 64  # D3D9 max is 64 elements per declaration
+
+
 def decode_decl(data, sections, image_base, va):
     """Decode a D3DVERTEXELEMENT9 array at the given VA."""
     print(f"\n=== Vertex Declaration at 0x{va:08X} ===")
@@ -79,7 +82,7 @@ def decode_decl(data, sections, image_base, va):
     has_skinning = False
     elem_idx = 0
 
-    while True:
+    while elem_idx <= MAX_ELEMENTS:
         elem = data[off:off + 8]
         if len(elem) < 8:
             break
@@ -88,6 +91,10 @@ def decode_decl(data, sections, image_base, va):
         if stream == 0xFF or stream == 0xFFFF:
             print(f"  [{elem_idx}] D3DDECL_END")
             break
+
+        if elem_idx == MAX_ELEMENTS:
+            print(f"  [{elem_idx}] ... (truncated — no D3DDECL_END found, likely a false positive)")
+            return
 
         type_name = D3DDECLTYPE.get(typ, f"UNKNOWN({typ})")
         usage_name = D3DDECLUSAGE.get(usage, f"UNKNOWN({usage})")
@@ -195,7 +202,7 @@ def scan_for_decls(data, sections, image_base):
                             struct.unpack_from("<HHBBBB", elem)
                         if stream <= 4 and typ <= 17 and usage <= 13:
                             found.add(addr)
-                i += 1
+            i += 1
 
     return sorted(found)
 
