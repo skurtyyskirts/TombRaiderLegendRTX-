@@ -16,7 +16,7 @@ venv/
 *.ilk
 
 # Generated patch output (asi_patcher)
-patches/
+# patches/ -- unignored for tracked game projects
 
 # D3D9 tracer runtime artifacts
 dxtrace_capture.trigger

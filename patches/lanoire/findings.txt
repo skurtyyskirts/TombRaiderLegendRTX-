@@ -1,0 +1,343 @@
+=== LA NOIRE DX9 RENDERING PIPELINE ANALYSIS ===
+
+Binary: LANoire.exe
+Analysis Date: 2026-03-22
+
+================================================================================
+1. ARCHITECTURE OVERVIEW
+================================================================================
+
+LA Noire uses a DUAL DX9/DX11 rendering engine with an AbstractDevice abstraction layer.
+
+Key RTTI classes discovered:
+  - AbstractDevice      (0x013DE640) - Base device interface
+  - AbstractDevice9     (0x013DF93C) - DX9 backend
+  - AbstractDevice11    (0x013DF7B4) - DX11 backend
+  - AbstractThreadedDevice (0x013DE660) - Threading wrapper
+  - DX9_Engine          (0x013DE604)
+  - DX9RenderTexture    (0x013DE4F8)
+
+The engine does NOT import SetVertexShaderConstantF/SetPixelShaderConstantF directly.
+All D3D9 device calls go through the AbstractDevice COM vtable wrapper.
+
+DX9-related imports (d3d9.dll):
+  - Direct3DCreate9
+  - D3DPERF_BeginEvent
+  - D3DPERF_EndEvent
+
+DX9X imports (d3dx9_43.dll):
+  - D3DXCompileShader    (used at 6 call sites)
+  - D3DXSaveSurfaceToFileA
+
+DX11 imports also present:
+  - D3D11CreateDevice
+  - D3DX11CompileFromMemory
+
+Shader programs loaded from: "out/graphicsdata/programs.vfp.dx9" (DX9 path)
+                              "out/graphicsdata/programs.vfp.dx11" (DX11 path)
+
+================================================================================
+2. RENDERER SINGLETON AND KEY STRUCTURES
+================================================================================
+
+Global renderer singleton pointer: 0x15264E0  (1065 xrefs)
+  - This is the main rendering object with vtable at 0x124CC54
+  - Referenced via: mov ecx/eax/esi, dword ptr [0x15264E0]
+
+Renderer vtable: 0x124CC54
+  [0]  0x00D4C0D0  - GetType() returns 2
+  [1]  0x00D58470  - Init/Constructor
+  [5]  0x00D5F990  - BeginScene
+  [6]  0x00D5FB70  - EndScene wrapper -> calls 0x00D68020
+  [9]  0x00D581F0  - Destructor
+  [11] 0x00D4C7D0  - GetThreadId (calls Direct3DCreate9 IAT)
+  [19] 0x00D6BFA0  - CreateRenderTarget related
+  [20] 0x00D69780  - Resource management
+
+Renderer object layout (offsets in DWORDs from base):
+  [0x5b8]  = DX9 device wrapper pointer (AbstractDevice9 instance)
+  [0x5d0]  = Secondary device/resource pointer
+  [0xa2]   = Handle: EyePosition constant
+  [0xa3]   = Handle: EyeDirection constant
+  [0xa4]   = Handle: ViewInverse constant
+  [0xa5]   = Handle: GlobalTintColour constant
+  [0xa6]   = Handle: AlphaFade constant
+  [0xa8]   = Handle: ModelViewProjectionMatrix constant
+  [0xaa]   = Handle: NormalMatrix constant
+  [0xac]   = Handle: DOF_Focus constant
+  [0xad]   = Handle: DOF_Near constant
+  [0xae]   = Handle: DOF_Far constant
+  [0xaf]   = Handle: DOF_Clamp constant
+  [0xb0]   = Handle: NearPlane constant
+  [0xb1]   = Handle: FarPlane constant
+  [0xb2]   = Handle: WindowSize constant
+  [0xb8]   = Handle: RenderTargetSize constant
+  [0xc4]   = Handle: PositionScale constant
+  [0xc5]   = Handle: LowLodTextureBlend constant
+  [0xc6]   = Handle: CameraParams constant
+  [0xc7]   = Handle: DepthSlopeBias constant
+  [0xc8]   = Handle: VertexLightsSettings constant
+  [0xc9]   = Handle: Apparent3DDepthOf2DElements constant
+  [0xca]   = Handle: FacingRegisterFlip constant
+  [0xcb]   = Handle: ClothEnabled constant
+  [0x690]  = Window width (float?)
+  [0x691]  = Window height (float?)
+  [0x5c0-0x5cf] = Projection matrix (4x4 floats)
+
+================================================================================
+3. SHADER CONSTANT HANDLE FORMAT
+================================================================================
+
+The engine uses a PACKED 32-bit handle for each named shader constant:
+
+  Bits 24-31: Number of float4 registers (count)
+  Bits  8-15: Vertex Shader register index (0xFF = not used in VS)
+  Bits  0-7:  Pixel Shader register index (0xFF = not used in PS)
+
+Handles are obtained via ID3DXConstantTable::GetConstantByName (vtable offset 0x1FC)
+during renderer initialization at 0x00D58E88.
+
+The constant table object is accessed from the renderer via **(*renderer + 0x1FC).
+
+================================================================================
+4. SetVertexShaderConstantF MECHANISM
+================================================================================
+
+The engine does NOT call IDirect3DDevice9::SetVertexShaderConstantF directly.
+Instead, it uses a custom abstraction:
+
+CONSTANT SETTING WRAPPER: fcn.00D60AB0
+  Signature: void __thiscall SetShaderConstant(uint32_t handle, void* data)
+  - ECX = packed handle (see format above)
+  - [esp+4] = pointer to float data
+
+  Implementation:
+    1. Reads render context from TLS: FS:[0x2C] -> [slot0] -> [+8] -> [ptr]
+    2. Gets vtable of the render context object
+    3. If VS register != 0xFF: calls vtable[5] (offset 0x14) = SetVSConstant(reg, data, count)
+    4. If PS register != 0xFF: calls vtable[6] (offset 0x18) = SetPSConstant(reg, data, count)
+
+  This function has 295 xrefs (call sites) throughout the engine.
+
+The render context vtable methods:
+  [5] offset 0x14 = SetVertexShaderConstant(int startRegister, void* data, int count)
+  [6] offset 0x18 = SetPixelShaderConstant(int startRegister, void* data, int count)
+
+These methods are virtual and have DX9 and DX11 implementations.
+The DX9 implementation internally calls IDirect3DDevice9::SetVertexShaderConstantF
+through the raw D3D9 COM vtable.
+
+Device wrapper vtable methods (on renderer[0x5b8] object):
+  offset 0x04 = SetRenderState(state, value)
+  offset 0x0C = SetSamplerState(stage, type, value)
+  offset 0x14 = SetVertexShaderConstant(reg, data, count)
+  offset 0x18 = SetPixelShaderConstant(reg, data, count)
+  offset 0x28 = SetTexture(stage, texture)
+  offset 0x38 = ??? (draw-related)
+  offset 0x48 = ??? (present/flush)
+  offset 0x4C = CreateVertexBuffer?
+  offset 0x50 = CreateIndexBuffer?
+  offset 0x60 = CreateTexture?
+  offset 0x64 = CreateRenderTarget?
+  offset 0x6C = SetVertexDeclaration?
+  offset 0x70 = SetRenderTarget?
+  offset 0x7C = ??? (present)
+  offset 0xBC = DrawPrimitive?
+
+================================================================================
+5. MATRIX REGISTER LAYOUT
+================================================================================
+
+Constants are assigned at init time (0x00D58E88) using GetConstantByName.
+The actual VS/PS register assignments are DYNAMIC - determined by the compiled shader's
+constant table at runtime, not hardcoded register numbers.
+
+Named constants and their sizes (in float4 registers):
+
+  PER-FRAME (set in 0x00D5E910 and 0x00E14CF2):
+    ModelViewProjectionMatrix  - 4 registers (4x4 matrix)
+    ModelMatrix                - 7 registers (4x4 matrix + extra?)
+    ModelViewMatrix            - 7 registers (4x4 matrix + extra?)
+    ModelViewMatrixInverse     - 7 registers (4x4 matrix + extra?)
+    NormalMatrix               - 6 registers
+    ViewInverse                - 3 registers
+    TextureMatrix              - 7 registers
+
+  PER-FRAME CAMERA (set in 0x00D5E910):
+    EyePosition                - 3 registers (position + padding)
+    EyeDirection               - 3 registers
+
+  PER-FRAME LIGHTING (set in 0x00E14CF2):
+    LightColour                - 4 registers
+    AmbientDirection           - 4 registers
+    AmbientColour              - 4 registers
+    GenericTint1               - 4 registers
+    GenericTint2               - 4 registers
+    GenericTint3               - 4 registers
+    GenericTint4               - 4 registers
+    GenericTint5               - 4 registers
+
+  PER-FRAME MISC:
+    AlphaFade                  - 1 register
+    DOF_Focus                  - 1 register
+    DOF_Near                   - 1 register
+    DOF_Far                    - 1 register
+    DOF_Clamp                  - 1 register
+    NearPlane                  - 1 register
+    FarPlane                   - 1 register
+    WindowSize                 - 4 registers
+    RenderTargetSize           - 4 registers
+    PositionScale              - 4 registers
+    LowLodTextureBlend         - (small)
+    CameraParams               - 4 registers
+    DepthSlopeBias             - 2 registers
+    VertexLightsSettings       - 4 registers
+    Apparent3DDepthOf2DElements - 1 register
+    FacingRegisterFlip         - 1 register
+    ClothEnabled               - 1 register
+    GlobalTintColour           - (from init)
+
+================================================================================
+6. KEY RENDERING FUNCTIONS
+================================================================================
+
+RENDERER INIT (constructor):
+  0x00D58E88 - Main renderer initialization
+    - Resolves all named shader constants via GetConstantByName
+    - Loads shader programs from "programs.vfp.dx9"
+    - Sets up projection matrix, cubemap hashes, etc.
+    - Creates vertex declaration manager
+
+CAMERA/VIEW SETUP:
+  0x00D5E910 - SetCameraMatrices(viewMatrix, ???, writeToSnapshot)
+    - Copies 5x4 camera data from arg into TLS render context
+    - Computes View matrix (offsets 0x8C-0x9B in context)
+    - Computes ViewProjection (offsets 0x78-0x87)
+    - Computes InvView/frustum planes
+    - Uses matrix multiply helpers: 0x00402BC0, 0x004021D0, 0x004022C0
+    - Called from parent, writes camera snapshot for shadow rendering
+
+PER-DRAW CONSTANT SETUP:
+  0x00E14CF2 - SetPerDrawConstants(???)
+    - Sets ModelViewProjectionMatrix, ModelMatrix, ModelViewMatrix,
+      ModelViewMatrixInverse, TextureMatrix
+    - Sets lighting: LightColour, AmbientDirection, AmbientColour
+    - Sets tints: GenericTint1-5
+    - Then dispatches draw: calls vtable 0x1D0, 0x6C, 0x38, 0x4, 0x280, 0x288, 0x48
+
+CONSTANT SETTER:
+  0x00D60AB0 - SetShaderConstant(handle, data) [295 xrefs]
+    - Thiscall, ECX = packed handle, arg = data pointer
+    - Dispatches to VS and/or PS register write through AbstractDevice vtable
+
+BEGIN SCENE:
+  0x00D5F990 - Renderer::BeginScene()
+    - Processes command queue (0x00D4D080)
+    - Calls deferred callbacks (0x00D4CED0)
+    - Processes render state changes (0x00D4D450, 0x00D4CAF0)
+    - Calls D3DPERF_BeginEvent for profiling
+
+SET DEFAULT RENDER STATES:
+  0x00D5F7B5 - SetDefaultRenderStates()
+    - Sets via device wrapper vtable[1] (offset 0x4):
+      SetRenderState(7, 1)   - D3DRS_ZENABLE = TRUE
+      SetRenderState(0xE, 1) - D3DRS_ZWRITEENABLE = TRUE
+      SetRenderState(0x17, 4)- D3DRS_FILLMODE = SOLID
+      SetRenderState(0x1B, 0)- D3DRS_ALPHABLENDENABLE = FALSE
+      SetRenderState(0xAB, 1)- D3DRS_SEPARATEALPHABLENDENABLE = TRUE
+      SetRenderState(0x13, 5)- D3DRS_SRCBLEND = SRCALPHA
+      SetRenderState(0x14, 6)- D3DRS_DESTBLEND = INVSRCALPHA
+    - Sets sampler states via vtable[3] (offset 0xC) for 16 stages
+
+BLEND MODE SETUP:
+  0x00D66A10 - SetBlendMode(mode)
+    - Switch on blend mode (0-4)
+    - Sets alpha blend enable, src/dest blend, etc.
+
+================================================================================
+7. SetTransform USAGE (FFP)
+================================================================================
+
+The engine does NOT use IDirect3DDevice9::SetTransform for fixed-function pipeline.
+All transforms are passed via shader constants through the abstraction layer.
+The D3DRS_* render state values set in SetDefaultRenderStates confirm the engine
+uses the programmable pipeline exclusively.
+
+No "SetTransform" string found in the binary.
+
+================================================================================
+8. D3DX CONSTANT TABLE vs DIRECT REGISTER WRITES
+================================================================================
+
+The engine uses a HYBRID approach:
+
+During INITIALIZATION (0x00D58E88):
+  - Uses ID3DXConstantTable::GetConstantByName (vtable 0x1FC) to resolve
+    named constants to packed register handles
+  - The constant table comes from D3DXCompileShader output
+
+During RENDERING (0x00D60AB0 + 295 call sites):
+  - Uses DIRECT REGISTER WRITES via the AbstractDevice wrapper
+  - The packed handle already contains the start register and count
+  - Does NOT call ID3DXConstantTable::SetMatrix/SetVector at render time
+  - Directly calls AbstractDevice::SetVSConstant(startReg, data, count)
+    which wraps IDirect3DDevice9::SetVertexShaderConstantF
+
+This is efficient: resolve names once at init, then use direct register writes per-frame.
+
+================================================================================
+9. TLS RENDER CONTEXT CHAIN
+================================================================================
+
+The constant setter reads the active render context from Thread-Local Storage:
+
+  FS:[0x2C]     -> TLS slot array
+  [slot 0]      -> Module TLS data
+  [TLS + 8]     -> Pointer to active render context pointer
+  *[that ptr]   -> Active render context (AbstractDevice instance)
+  [context + 0] -> vtable
+  [vtable+0x14] -> SetVertexShaderConstant
+  [vtable+0x18] -> SetPixelShaderConstant
+
+This TLS indirection allows different threads to have different render contexts,
+supporting the threaded rendering architecture.
+
+================================================================================
+10. GLOBAL DATA ADDRESSES
+================================================================================
+
+  0x15264E0  - Renderer singleton pointer (1065 xrefs)
+  0x141D210  - Global 5x4 float array (copied into renderer at init)
+  0x141D288  - Critical section for render command queue
+  0x141D2A0  - Performance counter values
+  0x141D2B0  - Frame timing data
+  0x141D2B8  - Frame sync flag
+  0x141D1D8  - Some renderer state value
+  0x1343810  - Stack cookie / security value
+  0x13F1290  - Shader compiler interface?
+  0x13F12B8  - QPC frequency
+  0x13F12C2  - Threading mode flag (char, NZ = multithreaded)
+  0x13F1331  - DX11 mode flag (char, NZ = use DX11 shaders)
+  0x13F133C  - Frame callback pointer
+  0x10F33BC  - Float constant: 0.0 (zero)
+  0x10F18FC  - Float constant (used for defaults)
+  0x10F1D68  - Float constant (used for FarPlane default)
+  0x10F10D8  - Int constant (used for AlphaFade init)
+  0x10F1390  - Float constant (used for LightColour)
+  0x1264080  - Float constant (DOF_Near default)
+  0x1263A80  - Float constant (DOF_Far default)
+  0x1263670  - Float constant (aspect ratio?)
+  0x1263738  - Float constant (near plane?)
+  0x12637A8  - Float constant (frame time scale)
+  0x1263698  - Float constant (PI or similar)
+  0x10C2344  - Float constant (1.0?)
+  0x10F28E4  - Float constant (DOF_Clamp default)
+  0x10F36AC  - Float constant (GenericTint5 component)
+  0x124C268  - Float constant (GenericTint5 component)
+
+String addresses:
+  0x1238E74  - "ModelViewProjectionMatrix"
+  0x01249C14 - "out/graphicsdata/programs.vfp.dx9"
+  0x01249C38 - "out/graphicsdata/programs.vfp.dx11"
+  0x01249E14 - "SetDefaultRenderStates"
+  0x0124F3EC - "cbuffer RenderStuff%d : register (b%d)" (DX11 CB format string)

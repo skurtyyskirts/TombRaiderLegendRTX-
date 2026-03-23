@@ -149,6 +149,27 @@ __declspec(dllexport) void* __stdcall Direct3DCreate9(unsigned int SDKVersion) {
     return (void*)WrappedD3D9_Create(pReal);
 }
 
+/* ---- D3DPERF stubs (forwarded to real d3d9) ---- */
+
+typedef int (__stdcall *PFN_D3DPERF_BeginEvent)(unsigned int col, const wchar_t *name);
+typedef int (__stdcall *PFN_D3DPERF_EndEvent)(void);
+
+__declspec(dllexport) int __stdcall D3DPERF_BeginEvent(unsigned int col, const wchar_t *name) {
+    if (g_realD3D9) {
+        PFN_D3DPERF_BeginEvent fn = (PFN_D3DPERF_BeginEvent)GetProcAddress(g_realD3D9, "D3DPERF_BeginEvent");
+        if (fn) return fn(col, name);
+    }
+    return 0;
+}
+
+__declspec(dllexport) int __stdcall D3DPERF_EndEvent(void) {
+    if (g_realD3D9) {
+        PFN_D3DPERF_EndEvent fn = (PFN_D3DPERF_EndEvent)GetProcAddress(g_realD3D9, "D3DPERF_EndEvent");
+        if (fn) return fn();
+    }
+    return 0;
+}
+
 /* ---- DllMain ---- */
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
