@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Build artifacts
+*.obj
+*.o
+*.asi
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# Generated patch output (asi_patcher)
+patches/
+
+# D3D9 tracer runtime artifacts
+dxtrace_capture.trigger
+dxtrace_progress.txt
+dxtrace_frame.jsonl
+
+# D3D9 tracer build output
+graphics/directx/dx9/tracer/bin/
+
+# livetools daemon state
+livetools/.state.json
+
+# IDE / Editor
+.vs/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+desktop.ini
+.DS_Store
+
+# Signature DB (downloaded via sigdb.py pull)
+retools/data/signatures.db
+retools/data/sources/
+*.db-shm
+*.db-wal
+
+# ============================================
+# Game directories -- not part of the tooling
+# ============================================
+
+# Full game install + RTX Remix runtime files
+Tomb Raider Legend/
+
+# Project-specific RE session workspace
+TombRaiderLegend/
+
+# Bundled third-party tools (large binaries, downloaded separately)
+tools/radare2*/
+
+# Log files
+*.log
+
+# DXVK / RTX Remix runtime caches
+*.dxvk-cache
+
+# Claude Code user-specific memory (per-machine)
+.claude/projects/
