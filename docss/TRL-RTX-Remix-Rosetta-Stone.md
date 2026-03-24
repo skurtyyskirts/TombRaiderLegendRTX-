@@ -2,7 +2,7 @@
 
 **The complete reference of every value, address, setting, and decision that makes TRL render under RTX Remix path tracing.**
 
-Working build: `patches/TombRaiderLegend/backups/2026-03-22_working-lara-visible/`
+Working build: `patches/TombRaiderLegend/backups/2026-03-23_stable-skinned-npcs/`
 
 ---
 
@@ -29,7 +29,8 @@ These are hardcoded addresses in the TRL binary (`trl.exe` v1.2, May 18 2006). T
 | `0x010FC780` | `float[16]` | 64 bytes | View matrix (row-major 4×4) | Read every draw to decompose World from WVP |
 | `0x01002530` | `float[16]` | 64 bytes | Projection matrix (row-major 4×4) | Read every draw to decompose World from WVP |
 | `0x00EFDD64` | `float` | 4 bytes | Frustum culling threshold | **Patched to `1e30`** at startup — disables frustum culling |
-| `0x0040EEA7` | code | — | Cull conditional instruction | NOT patched — culling handled via render state override |
+| `0x00407150` | code | 1 byte | Frustum cull function entry | **Patched to `0xC3` (ret)** at startup — disables all frustum culling |
+| `0x0040EEA7` | code | — | Cull conditional instruction | NOT patched — culling handled via render state + frustum function ret |
 
 ### How Addresses Were Found
 
@@ -150,7 +151,7 @@ TRL uses exactly two vertex formats:
 The proxy intercepts all four D3D9 draw methods:
 
 | Vtable Slot | Method | Status | Why Intercepted |
-|-------------|--------|--------|-----------------|
+|-------------|--------|--------|------------------|
 | 81 | `DrawPrimitive` | INTERCEPTED | Apply transform overrides |
 | 82 | `DrawIndexedPrimitive` | INTERCEPTED | Apply transform overrides |
 | 83 | `DrawPrimitiveUP` | INTERCEPTED | dxwrapper routes most D3D8 draws here |
@@ -159,12 +160,16 @@ The proxy intercepts all four D3D9 draw methods:
 ### Draw Routing Logic (per draw call)
 
 ```
+if (primCount == 0 OR no vertex shader OR no declaration):
+    SUPPRESS (return S_OK, don't forward to Remix)
 if (viewProjValid AND not POSITIONT):
     TRL_PrepDraw()    → apply SetTransform overrides
     forward draw to Remix
 else:
-    forward draw to Remix (passthrough, no overrides)
+    SUPPRESS (return S_OK, don't forward to Remix)
 ```
+
+**All draws without valid transform state are suppressed, not passed through.** This prevents Remix from receiving draws that would produce empty vertex position hashes (which triggers a debug assertion in `d3d9_rtx_geometry.cpp:212`).
 
 ### Screen-Space Quad Filter
 
@@ -198,7 +203,8 @@ The quad filter was designed to skip fullscreen post-processing passes that occl
 | 82 | **DrawIndexedPrimitive** | Transform override + draw routing |
 | 83 | **DrawPrimitiveUP** | Transform override + draw routing |
 | 84 | **DrawIndexedPrimitiveUP** | Transform override + draw routing |
-| 87 | **SetVertexDeclaration** | Parse elements, detect skinning/morph/posT |
+| 87 | **SetVertexDeclaration** | Parse elements, detect skinning/morph/posT, strip non-FLOAT3 normals |
+| 89 | **SetFVF** | Strip `D3DFVF_NORMAL` flag — prevents Remix normal format assertion |
 | 92 | SetVertexShader | Track current VS, reset ffpActive |
 | 94 | **SetVertexShaderConstantF** | Cache constants, dirty tracking, bone upload |
 | 100 | SetStreamSource | Track stream VB/offset/stride |
@@ -225,14 +231,15 @@ dxwrapper translates D3D8 API calls to D3D9 with these quirks:
 ## 9. Render State Overrides
 
 | State | Forced Value | Why |
-|-------|-------------|-----|
+|-------|--------------|----- |
 | `D3DRS_CULLMODE` | `1` (D3DCULL_NONE) | Remix path tracing needs all faces visible — rays come from any direction |
 
 ### Game Memory Patches (applied once at device creation)
 
 | Address | Original | Patched To | Why |
 |---------|----------|------------|-----|
-| `0x00EFDD64` | Game's frustum threshold | `1e30f` | Prevents the game from frustum-culling geometry behind the camera. Remix needs ALL geometry in the scene for correct ray tracing. |
+| `0x00EFDD64` | Game's frustum threshold | `1e30f` | Disables distance-based culling |
+| `0x00407150` | `55 8B EC 83` (function prologue) | `C3` (ret) | Disables ALL frustum culling — the function tests objects against frustum planes and marks invisible ones for skipping. Bare `ret` is safe (cdecl, caller cleanup). |
 
 ---
 
@@ -272,6 +279,8 @@ These states are configured when the proxy first sets up FFP mode (for Remix com
 | `rtx.terrain.terrainAsDecalsAllowOverModulate` | `False` | Disable terrain decal overmodulation |
 | `rtx.terrain.terrainAsDecalsEnabledIfNoBaker` | `True` | Enable terrain decals without baking |
 | `rtx.terrainBaker.enableBaking` | `False` | Disable terrain baking (not needed for TRL) |
+| `rtx.geometryAssetHashRuleString` | `"indices,texcoords,geometrydescriptor"` | **Critical for hash stability.** Excludes positions from the asset hash. See §16 |
+| `rtx.uiTextures` | `0x03016D2FBBF5C65D, 0x2164293A60D148AC` | Texture hashes Remix treats as UI |
 
 ### user.conf
 
@@ -337,7 +346,7 @@ AlbedoStage=0
 ### What Gets Logged
 
 | Event | Detail Level | Condition |
-|-------|-------------|-----------|
+|-------|-------------|----------|
 | Device creation | Always | — |
 | Matrix verification | Once | First `TRL_ApplyTransformOverrides` call |
 | Vertex declarations | Once per unique decl | During DIAG_ACTIVE window |
@@ -379,12 +388,100 @@ TRL uses morph targets (POSITION[1] blend shapes) for character animation instea
 
 ---
 
-## 15. Known Limitations
+## 15. Normal Stripping
+
+Remix's game capturer asserts that vertex normals are `VK_FORMAT_R32G32B32_SFLOAT` (D3D9 `FLOAT3`). TRL uses `SHORT4N` and `DEC3N` normals in some vertex declarations. The proxy strips these at two levels:
+
+### Vertex Declaration Stripping
+
+`SetVertexDeclaration` (slot 87) detects non-FLOAT3 NORMAL elements and creates a **modified declaration** with NORMAL removed. The modified declarations are cached (up to 64) and released on Reset/Release. The vertex buffer data is unchanged — only the declaration seen by Remix omits the normal element. Remix computes smooth normals via path tracing, so input normals aren't needed.
+
+### FVF Normal Stripping
+
+`SetFVF` (slot 89) strips the `D3DFVF_NORMAL` flag. dxwrapper's D3D8→D3D9 conversion may use SetFVF instead of SetVertexDeclaration for some draws.
+
+### Vertex Color Neutralization (UP Draws)
+
+TRL bakes per-vertex lighting as `D3DCOLOR` in every vertex. These change with camera/player position. For UP draws (where vertex data is inline), changing colors change the hash because Remix hashes the raw bytes. The proxy copies UP vertex data to a scratch buffer and sets all `COLOR[0]` to white (`0xFFFFFFFF`), stabilizing the hash while Remix handles lighting via path tracing.
+
+---
+
+## 16. Hash Stability Architecture
+
+**This is the most critical section for understanding how material/decal assignments persist.**
+
+### The Problem
+
+With `rtx.useVertexCapture=True`, Remix captures post-vertex-shader positions. These are **clip-space** coordinates (after World × View × Projection transform). When the camera moves, View changes, clip-space positions change, and any hash that includes positions becomes unstable.
+
+Remix uses two separate hashes:
+
+| Hash Type | Purpose | Default Components |
+|-----------|---------|-------------------|
+| **Generation hash** | Internal frame-to-frame geometry tracking, deduplication | positions, indices, texcoords, vertexlayout, vertexshader, geometrydescriptor |
+| **Asset hash** | Material/decal/light persistence, USD replacements | positions, indices, texcoords, geometrydescriptor |
+
+Both include positions by default → both are unstable with vertex capture.
+
+### The Solution
+
+```
+rtx.geometryAssetHashRuleString = "indices,texcoords,geometrydescriptor"
+```
+
+**Exclude positions from the asset hash only.** The generation hash keeps its default (includes positions).
+
+| Hash | Includes Positions? | Stable? | Effect |
+|------|-------------------|---------|--------|
+| Generation | Yes (default) | No — changes with camera | Debug view colors flash when camera moves. This is cosmetic. |
+| Asset | **No** (custom rule) | **Yes** — camera-invariant | Material assignments, decal hashes, placed lights persist across camera movement. |
+
+### Why Not Exclude Positions From Both?
+
+Excluding positions from the `geometryGenerationHashRuleString` triggers a debug assertion in RTX Remix:
+
+```
+d3d9_rtx_geometry.cpp:212
+hashes[HashComponents::VertexPosition] != kEmptyHash
+```
+
+When positions are excluded from the generation hash rule, Remix's debug build skips computing the position hash component, leaving it as `kEmptyHash`. An internal assertion then checks that all components are non-empty regardless of the rule. This is a Remix debug build behavior — release builds would not assert.
+
+### What's Stable Now
+
+| Geometry Type | Asset Hash Stable? | Why |
+|---------------|-------------------|-----|
+| **Lara (skinned NPC)** | **Yes** | Indices + texcoords + geometry descriptor don't change with camera |
+| **Other NPCs** | **Yes** | Same reason |
+| **World geometry** | **Partially** | Static meshes are mostly stable. Some dynamic geometry (water, particles) may still shift due to vertex color changes. |
+| **Decals (e.g. dirt on Lara)** | **Yes** | Asset hash `B0E9715056328D5E` persists across camera movement |
+
+### What the Debug View Shows
+
+The debug geometry hash visualization (colored overlays) shows the **generation hash**, which includes positions and WILL flash/change when the camera moves. This is expected and does not affect material persistence. To verify material stability, assign a material or decal and confirm it persists after moving the camera.
+
+### Supporting Proxy Features
+
+The proxy includes several features that work together with the hash rule for stability:
+
+1. **World matrix quantization** (`WORLD_QUANT_GRID = 1e-3`): Snaps decomposed World matrix elements to a grid, preventing floating-point drift from creating new hashes frame-to-frame.
+
+2. **Draw suppression guards**: All draw calls are checked for valid state (vertex shader, declaration, transforms) before forwarding to Remix. Draws without proper state are suppressed (return `S_OK`), preventing empty position hashes.
+
+3. **Vertex color neutralization**: UP draw vertex colors are set to white to prevent per-vertex lighting changes from affecting hashes.
+
+4. **VP inverse caching**: The View × Projection inverse is cached and only recomputed when the camera moves more than `VP_CHANGE_THRESHOLD` (1e-4), preventing unnecessary World matrix recalculation.
+
+---
+
+## 17. Known Limitations
 
 | Issue | Status | Workaround |
 |-------|--------|------------|
+| **World geometry generation hashes shift with camera** | Open | Asset hash is stable for material persistence. Generation hash instability is cosmetic in debug view. Next step: investigate vertex expansion (SHORT4→FLOAT3 in proxy) to stabilize generation hash. |
 | Lara hair/eyelash textures can't be selected in Remix | Open | Need to identify texture hashes via Remix dev tools |
 | VP inverse may be slightly stale if game updates matrices mid-draw-sequence | Mitigated | Threshold of 1e-4 catches most changes; vertex capture provides correct final positions |
 | Post-processing bloom/HDR quads may leak through | Acceptable | Quad filter disabled; Remix handles most post-processing automatically |
-| Hash instability on dynamic vertex buffers | Mitigated | `rtx.useVertexCapture=True` + world quantization grid |
 | Lara outline ghost in freecam | Open | Game silhouette shader effect — needs texture hash filtering in Remix |
+| `smoothNormalsTextures` disabled | Blocked by Remix debug assert | Re-enable after switching to a release build of Remix |
+| Generation hash flashes in debug view | Expected | Uses clip-space positions from vertex capture. Does not affect material persistence (uses asset hash). |
