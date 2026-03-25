@@ -1,0 +1,181 @@
+=== DX9 Shader-to-FFP Proxy ===
+Remix enabled, loading: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\d3d9_remix.dll
+Direct3DCreate9 called, SDK version: 0x00000020
+Real IDirect3D9: 0x019597F0
+WrappedD3D9 created at 0x01923CA0
+CreateDevice called
+  Adapter: 0x00000000
+  DeviceType: 0x00000001
+  BehaviorFlags: 0x00000050
+  Real device: 0x05820048
+WrappedDevice created with shader passthrough + transform override
+  Diag delay (ms): 50000
+  AlbedoStage: 0
+  Real device: 0x05820048
+  View matrix addr: 0x010FC780
+  Proj matrix addr: 0x01002530
+  Patched frustum threshold to 1e30
+  Patched frustum cull function to ret (0x407150)
+  Wrapped device: 0x01928798
+=== Game Memory Matrix Verification ===
+  View (0x010FC780):
+  row0: 0.75 0.00 0.00 0.00
+  row1: 0.00 -0.10 0.99 0.00
+  row2: 0.00 -1.16 -0.08 0.00
+  row3: -0.00 0.00 0.00 1.00
+  Proj (0x01002530):
+  row0: 2.00 0.00 0.00 0.00
+  row1: 0.00 -2.28 0.00 0.00
+  row2: 0.00 0.00 1.00 1.00
+  row3: 0.00 0.00 -16.00 0.00
+  VP (computed):
+  row0: 1.50 0.00 0.00 0.00
+  row1: 0.00 0.23 0.99 0.99
+  row2: 0.00 2.65 -0.08 -0.08
+  row3: 0.00 0.00 -16.00 0.00
+  World (applied):
+  row0: 1.33 0.00 0.00 0.00
+  row1: 0.00 -0.07 -0.85 0.00
+  row2: 0.00 0.99 -0.08 0.00
+  row3: 0.00 0.00 0.00 1.00
+  skinned=0
+== SCENE 120
+  total=1416
+  processed=1416
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 240
+  total=1440
+  processed=1440
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 360
+  total=1010
+  processed=1010
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 480
+  total=119
+  processed=119
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 600
+  total=56825
+  processed=56825
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 720
+  total=189232
+  processed=189232
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 840
+  total=98024
+  processed=98024
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 960
+  total=19284
+  processed=19284
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 1080
+  total=93543
+  processed=93543
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 1200
+  total=93480
+  processed=93480
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 1320
+  total=93480
+  processed=93480
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 1440
+  total=93200
+  processed=93200
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 1560
+  total=91800
+  processed=91800
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 1680
+  total=91800
+  processed=91800
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 1800
+  total=91800
+  processed=91800
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 1920
+  total=91800
+  processed=91800
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 2040
+  total=91800
+  processed=91800
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 2160
+  total=91800
+  processed=91800
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 2280
+  total=91800
+  processed=91800
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
+== SCENE 2400
+  total=91800
+  processed=91800
+  skippedQuad=0
+  passthrough=0
+  xformBlocked=0
+  vpValid=1
