@@ -30,7 +30,16 @@ All previous patches remain active:
 
 ## Retools Findings
 
-Static analyzer subagent dispatched — results pending at time of packaging.
+Static analyzer verified all 6 proxy-reported patch sites against on-disk PE:
+- **0x407150** (cull function): On-disk has full prologue (`push ebp; mov ebp, esp`), confirming proxy patches RET at runtime
+- **0x4070F0** (scene traversal): On-disk has original code (AND, PUSH, CALL, MOVAPS), no NOPs — runtime-only patches
+- **0x60CDE2** (light broad-visibility): Confirmed `74 61` (JE +0x61) on disk, proxy NOPs at runtime
+- **0x60CE20** (light frustum plane): Confirmed `0F 8B 8D 01 00 00` (JNP +0x18D) on disk, proxy NOPs at runtime
+- **0x603832** and **0x60E30D**: Pending-flag patches also runtime-only
+- Draw counts steady at ~1440/scene, peak ~190K at scene 960
+- All patches confirmed applied correctly by proxy at runtime
+
+Key finding from prior analysis: deferred lights (failing frustum test) still get drawn via a second loop at 0x60CF18 with mode=0. So NOPing the frustum jump changes mode from deferred(0) to immediate(1), not whether they draw at all.
 
 ## Ghidra MCP Findings
 
