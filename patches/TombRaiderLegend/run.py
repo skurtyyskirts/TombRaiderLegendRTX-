@@ -37,8 +37,13 @@ SCREENSHOTS_DIR = SCRIPT_DIR / "screenshots"
 sys.path.insert(0, str(REPO_ROOT))
 
 
-def collect_screenshots(max_age_seconds=120):
-    """Copy screenshots from the last max_age_seconds from NVIDIA capture folder."""
+def collect_screenshots(max_age_seconds=120, limit=3):
+    """Copy the most recent `limit` screenshots from NVIDIA capture folder.
+
+    The macro takes 2 standing-still shots during menu nav before the 3
+    randomized movement shots. Taking only the last `limit` files ensures
+    we always get the post-movement captures, not the pre-movement ones.
+    """
     if not SCREENSHOTS_SRC.exists():
         print(f"WARNING: Screenshot folder not found: {SCREENSHOTS_SRC}")
         return []
@@ -49,6 +54,7 @@ def collect_screenshots(max_age_seconds=120):
     files = [f for f in files
              if f.suffix.lower() in (".png", ".jpg", ".bmp")
              and (now - f.stat().st_mtime) < max_age_seconds]
+    files = files[:limit]
 
     if not files:
         print("No recent screenshots found in NVIDIA capture folder.")
@@ -62,8 +68,8 @@ def collect_screenshots(max_age_seconds=120):
         collected.append(dest)
         print(f"  Screenshot: {f.name}")
 
-    print(f"Collected {len(collected)} screenshots (last {max_age_seconds}s) "
-          f"to {SCREENSHOTS_DIR}/")
+    print(f"Collected {len(collected)} screenshots (last {max_age_seconds}s, "
+          f"limit={limit}) to {SCREENSHOTS_DIR}/")
     return collected
 
 
