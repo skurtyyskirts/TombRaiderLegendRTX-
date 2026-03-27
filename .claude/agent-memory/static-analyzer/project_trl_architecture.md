@@ -22,6 +22,16 @@ Tomb Raider Legend uses a custom D3D8 renderer (converted to D3D9 via dxwrapper)
 - Multi-inheritance pattern: each light object has two vtable ptrs at [this+0] and [this+4].
 - RenderLights_FrustumCull (0x60C7D0) dispatches via vtable[6] at +0x18 offset.
 
+**3-Gate Light Culling Pipeline (discovered 2026-03-27):**
+
+Gate 1 -- LightVisibilityCheck (0x60B050): Mode-dependent AABB test. For point lights (mode 1), computes bounding AABB and tests camera intersection via 0x5F9BE0. Returns 0 for distant lights, causing je at 0x60CDE2 to skip the light entirely. This is the PRIMARY reason lights disappear at distance. Patch: B0 01 C2 04 00 at 0x60B050.
+
+Gate 2 -- Frustum Plane Test (0x60CDF1-0x60CE2D): 6-plane dot product loop. JNP at 0x60CE20 rejects lights outside frustum. Already patched with NOP in build 030.
+
+Gate 3 -- Sector Light List (0x60E345): Checks [lightGroup+0x1B0] for light count. If 0, entire RenderLights_FrustumCull is skipped via je at 0x60E3B1. This is sector-scoped -- lights only exist in the sector they were placed in. If Lara crosses sector boundary, the new sector may have 0 lights, making both Gate 1 and Gate 2 patches irrelevant.
+
+**Critical insight:** Even with Gates 1+2 patched, Gate 3 (sector light list) can prevent all lights from rendering if Lara enters a sector without lights. The sector light list is populated upstream, not by the render path itself.
+
 **5-Layer Geometry Culling System (discovered 2026-03-26):**
 
 Layer 1 -- Sector/Portal Visibility (0x46C180): The level is divided into 8 sectors stored in a fixed array at 0x11582F8 (0x5C bytes each). Only sectors with [entry+5]&0x8 set are rendered. This flag is computed per-frame from portal connectivity relative to the camera's current sector. This is the PRIMARY reason distant geometry disappears even when frustum culling is patched. To disable: NOP je at 0x46C194 (6 bytes) and jne at 0x46C19D (6 bytes).
