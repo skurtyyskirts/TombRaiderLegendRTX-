@@ -1,7 +1,7 @@
 # TRL RTX Remix — Results Whiteboard
 
-**Last updated:** 2026-03-27
-**Builds completed:** 001-033 (20 builds, 003-015 not preserved)
+**Last updated:** 2026-03-27 (session 2)
+**Builds completed:** 001-052 (003-015 not preserved)
 **Goal:** Get Tomb Raider Legend rendering correctly with RTX Remix — stable hashes, no culling, anchored lights
 
 ---
@@ -21,9 +21,10 @@
 | Sector/portal visibility disabled | DONE | NOPs at 0x46C194 + 0x46C19D, 65x draw increase |
 | Light frustum rejection disabled | DONE | NOP at 0x60CE20 |
 | Light visibility pre-check disabled | DONE | `Light_VisibilityTest` at 0x60B050 → `mov al,1; ret 4` (build 031) |
-| Sector light count gate disabled | DONE | NOP at 0xEC6337 (build 033) |
-| Lights stable across all positions | **FAILING** | Lights vanish when Lara moves to a sector without stage lights in its list |
-| Remix light anchors hold on movement | **FAILING** | Consequence of above |
+| Sector light count gate disabled | DONE | NOP at 0xEC6337 (build 035) |
+| GREEN light stable at all positions | **DONE** | `mesh_AB241947CA588F11` anchor works — its sector has non-zero static lights |
+| RED light stable at all positions | **FAILING** | Red anchor meshes are in sectors with 0 static lights at `[sector_data+0x664]` |
+| Remix light anchors hold on movement | **PARTIAL** | Green holds, red disappears — sector data issue, not culling |
 
 ---
 
@@ -185,9 +186,18 @@ FUN_006033d0 / FUN_00602aa0 ← UNPATCHED, BUILDS PER-SECTOR LIGHT LISTS (proxim
 
 ## Immediate Next Step
 
-**Two steps needed:**
+**Fix red light anchor sector data.** The green light works at all positions (its sector has static lights at `[sector_data+0x664]`). The red light fails because its anchor meshes are in sectors with 0 static lights. Three approaches to try:
 
-1. **Fix test macro** — build 033 captured the pause menu instead of gameplay. Add an ESCAPE keypress after level load to dismiss it. Re-run the existing proxy code (0xEC6337 NOP untested) with valid screenshots.
+1. **Draw call replay in proxy**: Record the light volume DrawIndexedPrimitive calls from the first frame (when all lights render at baseline), replay them every subsequent frame. Ensures anchor hashes always present for Remix.
+2. **Runtime sector data patch**: Find the sector data base (`*(renderCtx+0x220)`) and write 1 to `[sector_data + N*0x684 + 0x664]` for all sectors. Forces all sectors to claim they have lights.
+3. **Find Lara's mesh hash**: Compare Remix captures across positions to identify Lara's body hash. Anchor red light to it — always visible.
+
+**What was tried and ruled out:**
+- Multiple lights per mesh: Remix only renders the first SphereLight per mesh hash
+- Fallback light (mode 1/2): Can't balance ambient with point light — one always dominates
+- Alternative anchor meshes (7DFF, 6AF0, 5601, ECD5): All in sectors with 0 static lights
+- Boosted intensity (up to 500K): Causes Remix rendering issues above ~50K
+- Light count clear NOP (0x603AE6): Causes stale data corruption
 
 2. **Patch sector light list builder** — `FUN_006033d0` / `FUN_00602aa0` in `RenderScene_TopLevel` (0x60A0F0) populate per-sector light lists with a proximity filter. Decompile both to find and remove the filter so all level lights enter every sector's list.
 
