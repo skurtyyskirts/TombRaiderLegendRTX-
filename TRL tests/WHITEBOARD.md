@@ -65,7 +65,7 @@ Every culling mechanism discovered and its patch status:
 | 9. Pending-render flags | 0x603832, 0x60E30D | Caller chain flags | Yes — NOPed (no effect) | 025 |
 | 10. Light visibility state NOPs | 5 addresses in LightVolume_UpdateVisibility | Visibility state check | Attempted — NOT confirmed in log | 026 |
 | 11. Light_VisibilityTest | 0x0060B050 | Pre-frustum distance/sphere/cone gate per light | Yes — `mov al,1; ret 4` | 031 |
-| 12. Sector light count gate | 0xEC6337 | JNZ gate: skips light pass if sector light count == 0 | Yes — NOPed | 033 |
+| 12. Sector light count gate | 0xEC6337 (inside FUN_00EC62A0) | JNZ gate: skips light pass if sector light count == 0 | Yes — NOPed | 033 |
 | 13. Sector light list population | FUN_006033d0 / FUN_00602aa0 | Upstream: builds per-sector light arrays (proximity filter) | **NO — root cause of remaining failure** | — |
 | 14. LOD alpha fade | 0x446580 | 10 callers, may fade geometry invisible at distance | **UNEXPLORED** | — |
 | 15. Scene graph sector early-outs | Unknown | Sector-based submission skipping | **UNEXPLORED** (may be covered by layer 6) | — |
@@ -123,7 +123,6 @@ Every culling mechanism discovered and its patch status:
 
 | Idea | Why It Matters | Difficulty |
 |------|----------------|------------|
-| Fix pause menu in test macro | Build 033 macro captured pause screen instead of gameplay — add ESCAPE keypress after level load | Easy — test infrastructure fix |
 | Decompile `FUN_006033d0` and `FUN_00602aa0` | These are called before `RenderScene_Main` and likely populate per-sector light lists with proximity filter | Medium — static analysis needed |
 | Patch the proximity filter in light list builder | Remove the "only include nearby lights" condition so all lights enter every sector's list | Hard — need to find and understand the filter |
 | Force `sector+0x84` non-zero for all sectors | `RenderScene_Main` gates on this field; if it's 0 a sector skips the light pass entirely | Medium — find the setter function |
@@ -146,6 +145,15 @@ Every culling mechanism discovered and its patch status:
 | 0xF2A0D4/D8/DC | Cull mode globals | Stamped to D3DCULL_NONE |
 | 0xEFD404/0xEFD40C | Screen boundary min/max | Used by boundary cull checks |
 
+### Sector Data Layout
+| Field | Notes |
+|-------|-------|
+| `*(renderCtx+0x220)` | Sector data base pointer |
+| `sector_data + N*0x684 + 0x664` | Native static light count for sector N (0 = no lights, gate skips) |
+| `sector+0x1B0` | Per-sector light list count (populated by FUN_00EC62A0) |
+| `sector+0x1B8` | Per-sector light list array pointer |
+| `sector+0x84`, `sector+0x94` | Fields gating light pass in `RenderScene_Main` (must be non-zero) |
+
 ### Renderer Chain
 ```
 g_pEngineRoot (+0x214) → TRLRenderer* (+0x0C) → IDirect3DDevice9*
@@ -163,11 +171,12 @@ g_pEngineRoot (+0x214) → TRLRenderer* (+0x0C) → IDirect3DDevice9*
 ### Light Pipeline
 ```
 FUN_006033d0 / FUN_00602aa0 ← UNPATCHED, BUILDS PER-SECTOR LIGHT LISTS (proximity filter here)
-  └→ Sector light list ([sector+0x1B0] count, [sector+0x1B8] array)
+  └→ FUN_00EC62A0 (0xEC62A0) — reads [sector_data+0x664], populates [sector+0x1B0] count
        └→ Sector light count gate (0xEC6337) ← NOPed (build 033)
             └→ Light_VisibilityTest (0x60B050) ← patched → always TRUE (build 031)
                  └→ Frustum 6-plane test (0x60CE20) ← patched (NOP)
-                      └→ Light Draw (vtable[0x18]) ← unexplored
+                      └→ LightVolume::Draw (vtable[0x18] = vtable[6]) ← unexplored
+                           └→ Lights failing frustum: deferred to global list at 0x13107FC
 ```
 
 ---
