@@ -140,6 +140,8 @@ def dismiss_setup_dialog():
     import ctypes.wintypes as wt
 
     user32 = ctypes.windll.user32
+    user32.SendMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+    user32.SendMessageW.restype = ctypes.c_long
     BM_CLICK = 0x00F5
     BM_GETCHECK = 0x00F0
     BM_SETCHECK = 0x00F1
@@ -259,7 +261,7 @@ def dismiss_setup_dialog():
                     if length > 0:
                         buf = ctypes.create_unicode_buffer(length + 1)
                         user32.SendMessageW(ch, CB_GETLBTEXT, i,
-                                            ctypes.cast(buf, wt.LPARAM))
+                                            ctypes.addressof(buf))
                         if target_text.lower() in buf.value.lower():
                             user32.SendMessageW(ch, CB_SETCURSEL, i, 0)
                             print(f"    {label_text}: {buf.value}")
@@ -273,7 +275,7 @@ def dismiss_setup_dialog():
             if length > 0:
                 buf = ctypes.create_unicode_buffer(length + 1)
                 user32.SendMessageW(best_combo, CB_GETLBTEXT, i,
-                                    ctypes.cast(buf, wt.LPARAM))
+                                    ctypes.addressof(buf))
                 if target_text.lower() in buf.value.lower():
                     user32.SendMessageW(best_combo, CB_SETCURSEL, i, 0)
                     print(f"    {label_text}: {buf.value}")

@@ -75,5 +75,9 @@ TombRaiderLegendRTX-/
 # DXVK / RTX Remix runtime caches
 *.dxvk-cache
 
-# Claude Code user-specific memory (per-machine)
+# Claude Code runtime state (per-machine)
 .claude/projects/
+.claude/scheduled_tasks.lock
+
+# External project clones (not part of this repo)
+TRLAU-menu-hook/
