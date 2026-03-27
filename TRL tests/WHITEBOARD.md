@@ -1,7 +1,7 @@
 # TRL RTX Remix — Results Whiteboard
 
 **Last updated:** 2026-03-27
-**Builds completed:** 001-030 (16 builds, 003-015 not preserved)
+**Builds completed:** 001-033 (20 builds, 003-015 not preserved)
 **Goal:** Get Tomb Raider Legend rendering correctly with RTX Remix — stable hashes, no culling, anchored lights
 
 ---
@@ -20,8 +20,9 @@
 | Frustum distance culling disabled | DONE | Threshold -1e30 + 7 NOP jumps + RET at 0x407150 |
 | Sector/portal visibility disabled | DONE | NOPs at 0x46C194 + 0x46C19D, 65x draw increase |
 | Light frustum rejection disabled | DONE | NOP at 0x60CE20 |
-| Light visibility pre-check disabled | **NOT DONE** | `Light_VisibilityTest` at 0x60B050 unpatched |
-| Lights stable across all positions | **FAILING** | Lights vanish when Lara walks away from stage |
+| Light visibility pre-check disabled | DONE | `Light_VisibilityTest` at 0x60B050 → `mov al,1; ret 4` (build 031) |
+| Sector light count gate disabled | DONE | NOP at 0xEC6337 (build 033) |
+| Lights stable across all positions | **FAILING** | Lights vanish when Lara moves to a sector without stage lights in its list |
 | Remix light anchors hold on movement | **FAILING** | Consequence of above |
 
 ---
@@ -30,11 +31,15 @@
 
 ### Problem 1: Lights Disappear on Movement
 
-**Root cause identified (build 030):** `Light_VisibilityTest` at `0x0060B050` is an unpatched culling gate. It runs per-light BEFORE the frustum test. For light types 0 and 1, it performs distance/sphere/cone checks and rejects lights that are "too far." The proxy already NOPs the frustum rejection (stage 2), but stage 1 kills them first.
+**`Light_VisibilityTest` patched (build 031) — lights still disappear at distance.** The patch correctly bypasses per-light AABB checks but is insufficient on its own.
 
-**Fix ready but untested:** Patch `0x0060B050` with `mov al, 1; ret 4` (5 bytes) to force all lights visible.
+**Root cause (confirmed build 031):** `RenderScene_Main` (0x603810) iterates sectors and only calls `RenderScene_LightPass` if `sector+0x84 + sector+0x94 != 0`. The per-sector light array at `[sector+0x1B0]` is only populated for sectors near the camera. When Lara moves to a sector that does not include the stage lights in its list, `[sector+0x1B0]` (light count) is 0 and `RenderLights_FrustumCull` is skipped entirely.
 
-**Risk:** If lights still disappear after this patch, the issue moves upstream to sector-level light list population — the loop in `RenderLights_FrustumCull` iterates over a list at `[param+0x1B0]` count / `[param+0x1B8]` array. If the sector system doesn't populate this list with all level lights, they never enter the loop.
+**Config flag tried (build 032):** Stamped engine flag at `0x01075BE0` ("Disable extra static light culling and fading") — no effect. Flag has no code xrefs and is not connected to the light collection system.
+
+**Sector light count gate NOPed (build 033):** Added NOP at `0xEC6337` to bypass the light count gate. Untested in valid screenshots (macro failure in build 033).
+
+**Remaining suspects:** `FUN_006033d0` and `FUN_00602aa0` (called before `RenderScene_Main` in `RenderScene_TopLevel`) — these likely populate per-sector light lists and apply proximity filtering. Finding and patching the proximity filter there is the next step.
 
 ### Problem 2: Hash Instability (Believed Resolved)
 
@@ -58,11 +63,12 @@ Every culling mechanism discovered and its patch status:
 | 8. Light broad-visibility test | 0x60CDE2 | Early light rejection | Yes — NOPed | 024 |
 | 9. Pending-render flags | 0x603832, 0x60E30D | Caller chain flags | Yes — NOPed (no effect) | 025 |
 | 10. Light visibility state NOPs | 5 addresses in LightVolume_UpdateVisibility | Visibility state check | Attempted — NOT confirmed in log | 026 |
-| **11. Light_VisibilityTest** | **0x0060B050** | **Pre-frustum distance/sphere/cone gate per light** | **NO — identified but unpatched** | — |
-| 12. Sector light list population | [param+0x1B0] / [param+0x1B8] | Upstream light array fed to RenderLights_FrustumCull | **UNEXPLORED** | — |
-| 13. LOD alpha fade | 0x446580 | 10 callers, may fade geometry invisible at distance | **UNEXPLORED** | — |
-| 14. Scene graph sector early-outs | Unknown | Sector-based submission skipping | **UNEXPLORED** (may be covered by layer 6) | — |
-| 15. Light Draw virtual method | vtable[0x18] per light | Internal culling inside light's Draw method | **UNEXPLORED** (hypothesis from build 025) | — |
+| 11. Light_VisibilityTest | 0x0060B050 | Pre-frustum distance/sphere/cone gate per light | Yes — `mov al,1; ret 4` | 031 |
+| 12. Sector light count gate | 0xEC6337 | JNZ gate: skips light pass if sector light count == 0 | Yes — NOPed | 033 |
+| 13. Sector light list population | FUN_006033d0 / FUN_00602aa0 | Upstream: builds per-sector light arrays (proximity filter) | **NO — root cause of remaining failure** | — |
+| 14. LOD alpha fade | 0x446580 | 10 callers, may fade geometry invisible at distance | **UNEXPLORED** | — |
+| 15. Scene graph sector early-outs | Unknown | Sector-based submission skipping | **UNEXPLORED** (may be covered by layer 6) | — |
+| 16. Light Draw virtual method | vtable[0x18] per light | Internal culling inside light's Draw method | **UNEXPLORED** (hypothesis from build 025) | — |
 
 ---
 
@@ -103,8 +109,11 @@ Every culling mechanism discovered and its patch status:
 | 028 | FAIL | Sector visibility NOPs + removed native light patches | Geometry fully submitting (65x increase). Clean render dark = Remix light range issue |
 | 029 | FAIL | Cull globals stamped + light frustum NOP + threshold -1e30 | All geometry culling confirmed defeated. Light disappearance remains |
 | 030 | FAIL | Baseline retest + Ghidra analysis | **ROOT CAUSE: `Light_VisibilityTest` at 0x60B050 unpatched** |
+| 031 | FAIL | `Light_VisibilityTest` patch (0x60B050 → `mov al,1; ret 4`) | Lights at baseline; still disappear at distance — root moved to sector light list population |
+| 032 | FAIL | Config flag stamp (0x01075BE0 = 1) for "Disable extra static light culling" | No effect — flag has no code xrefs, not connected to light collection |
+| 033 | FAIL | Same proxy + new NOP at 0xEC6337 (sector light count gate) | Macro failed — pause menu blocked all screenshots; proxy healthy; result inconclusive |
 
-**Conclusion:** Geometry culling fully solved. Light culling has a remaining gate at `Light_VisibilityTest`.
+**Conclusion:** Per-light culling gates all patched. Remaining blocker is upstream sector light list population — FUN_006033d0 / FUN_00602aa0 populate per-sector lists with only nearby lights.
 
 ---
 
@@ -112,15 +121,14 @@ Every culling mechanism discovered and its patch status:
 
 | Idea | Why It Matters | Difficulty |
 |------|----------------|------------|
-| Patch `Light_VisibilityTest` (0x60B050) → `mov al,1; ret 4` | Identified root cause of light disappearance | Easy — 5 byte patch, fix is ready |
-| Force sector light list to include all lights | If Light_VisibilityTest patch doesn't help, lights may not be in the iteration list at all | Hard — need to understand sector system |
+| Fix pause menu in test macro | Build 033 macro captured pause screen instead of gameplay — add ESCAPE keypress after level load | Easy — test infrastructure fix |
+| Decompile `FUN_006033d0` and `FUN_00602aa0` | These are called before `RenderScene_Main` and likely populate per-sector light lists with proximity filter | Medium — static analysis needed |
+| Patch the proximity filter in light list builder | Remove the "only include nearby lights" condition so all lights enter every sector's list | Hard — need to find and understand the filter |
+| Force `sector+0x84` non-zero for all sectors | `RenderScene_Main` gates on this field; if it's 0 a sector skips the light pass entirely | Medium — find the setter function |
 | Patch Light Draw virtual method internal culling | Build 025 hypothesis: light's own Draw method may clip | Medium — need vtable analysis |
-| Patch LOD alpha fade at 0x446580 | 10 callers, may fade geometry at distance | Medium — need to verify if it affects anything post-sector-patch |
-| Trace `"Disable extra static light culling and fading"` string at 0xEFF384 | Engine has a debug toggle for light culling — might be activatable | Easy — find the config flag and set it |
+| Patch LOD alpha fade at 0x446580 | 10 callers, may fade geometry at distance | Medium — verify if affects anything post-sector-patch |
 | Investigate 0x41F96A object visibility check | Uses same threshold, different code path | Low priority — sector patch may cover this |
 | Investigate particle/effect distance culling at 0x446B5A, 0x446BE0 | Particles/effects may disappear at distance | Low priority — not related to lights |
-| Force all sectors to populate all lights in their light lists | Nuclear option if per-light patches don't work | Hard — deep sector system RE needed |
-| Shorter movement distances in test macro | Test if lights work at close range after 0x60B050 patch | Easy — just change RNG bounds |
 
 ---
 
@@ -152,10 +160,12 @@ g_pEngineRoot (+0x214) → TRLRenderer* (+0x0C) → IDirect3DDevice9*
 
 ### Light Pipeline
 ```
-Sector light list ([param+0x1B0] count, [param+0x1B8] array)
-  └→ Light_VisibilityTest (0x60B050) ← UNPATCHED, BLOCKS LIGHTS
-       └→ Frustum 6-plane test (0x60CE20) ← patched (NOP)
-            └→ Light Draw (vtable[0x18]) ← unexplored
+FUN_006033d0 / FUN_00602aa0 ← UNPATCHED, BUILDS PER-SECTOR LIGHT LISTS (proximity filter here)
+  └→ Sector light list ([sector+0x1B0] count, [sector+0x1B8] array)
+       └→ Sector light count gate (0xEC6337) ← NOPed (build 033)
+            └→ Light_VisibilityTest (0x60B050) ← patched → always TRUE (build 031)
+                 └→ Frustum 6-plane test (0x60CE20) ← patched (NOP)
+                      └→ Light Draw (vtable[0x18]) ← unexplored
 ```
 
 ---
@@ -175,22 +185,26 @@ Sector light list ([param+0x1B0] count, [param+0x1B8] array)
 
 ## Immediate Next Step
 
-**Patch `Light_VisibilityTest` at 0x0060B050** — this is the single identified blocker. The fix is 5 bytes (`B0 01 C2 04 00` = `mov al, 1; ret 4`). If this works, lights should remain visible at all positions. If it doesn't, investigate the sector light list population upstream.
+**Two steps needed:**
+
+1. **Fix test macro** — build 033 captured the pause menu instead of gameplay. Add an ESCAPE keypress after level load to dismiss it. Re-run the existing proxy code (0xEC6337 NOP untested) with valid screenshots.
+
+2. **Patch sector light list builder** — `FUN_006033d0` / `FUN_00602aa0` in `RenderScene_TopLevel` (0x60A0F0) populate per-sector light lists with a proximity filter. Decompile both to find and remove the filter so all level lights enter every sector's list.
 
 ---
 
 ## Decision Tree for Next Failure
 
 ```
-Patch Light_VisibilityTest (0x60B050)
-├── Lights now stable at all positions → DONE (miracle build)
-└── Lights still disappear
-    ├── Check proxy log: was patch applied?
-    │   └── No → fix VirtualProtect / address
-    ├── Check: do lights appear briefly then vanish?
-    │   └── Yes → Light Draw method internal culling (vtable[0x18])
-    └── Check: do lights never appear at far positions?
-        └── Yes → Sector light list not populated
-            ├── Trace "Disable extra static light culling and fading" config string
-            └── RE the sector light list builder to force all lights
+Fix macro pause menu → re-run build 033 proxy code
+├── Lights stable at all positions → DONE (miracle build)
+└── Lights still disappear at distance
+    ├── Check proxy log: was 0xEC6337 NOP applied?
+    │   └── No → fix address
+    ├── Check: does [this+0x1B0] drop to 0 when Lara moves?
+    │   └── Yes → Sector light list not populated upstream
+    │       ├── Decompile FUN_006033d0 + FUN_00602aa0
+    │       └── Patch proximity filter in light collection function
+    └── Check: do lights appear briefly then vanish?
+        └── Yes → Light Draw method internal culling (vtable[0x18])
 ```
