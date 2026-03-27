@@ -1,0 +1,15 @@
+=== D3D9 Frame Trace Proxy ===
+Config: CaptureFrames=7200 CaptureInit=1
+Chain loading: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\d3d9_remix.dll
+Direct3DCreate9 called, SDK version: 0x00000020
+Real IDirect3D9: 0x01960D70
+WrappedD3D9 created at 0x0198D070
+CreateDevice called
+  BehaviorFlags: 0x00000050
+  Real device: 0x019BD918
+Init capture enabled -- logging Create* calls
+TracedDevice created at 0x019625C8
+  Real device: 0x019BD918
+  Traced device: 0x019625C8
+Shader disasm: loaded from d3dx9_43.dll
+=== CAPTURE STARTED ===
