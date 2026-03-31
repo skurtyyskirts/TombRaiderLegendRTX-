@@ -1,12 +1,12 @@
 ---
 description: RTX Remix DX9 FFP porting -- per-game folders, address mapping, VS constant discovery, build/deploy, pitfalls.
 inclusion: fileMatch
-fileMatchPattern: "patches/**,rtx_remix_tools/**,**/renderer.cpp,**/renderer.hpp,**/ffp_state.cpp,**/ffp_state.hpp,**/d3d9ex.cpp,**/d3d9ex.hpp,**/remix-comp.ini,**/premake5.lua,**/skinning.cpp,**/diagnostics.cpp"
+fileMatchPattern: "patches/**,rtx_remix_tools/**,**/renderer.cpp,**/renderer.hpp,**/ffp_state.cpp,**/ffp_state.hpp,**/d3d9ex.cpp,**/d3d9ex.hpp,**/remix-comp.ini,**/skinning.cpp,**/diagnostics.cpp"
 ---
 
 # DX9 FFP Proxy — Game Porting
 
-The remix-comp codebase (`rtx_remix_tools/dx/remix-comp/`) is a C++20 compatibility mod based on remix-comp-base that intercepts `IDirect3DDevice9`, captures VS constant matrices (View/Projection/World) from `SetVertexShaderConstantF`, NULLs shaders on draw calls, applies matrices through `SetTransform`, and chain-loads RTX Remix.
+Each game folder under `patches/<GameName>/` is a self-contained remix-comp project (copied from the template at `rtx_remix_tools/dx/remix-comp/`). It is a C++20 compatibility mod that intercepts `IDirect3DDevice9`, captures VS constant matrices (View/Projection/World) from `SetVertexShaderConstantF`, NULLs shaders on draw calls, applies matrices through `SetTransform`, and chain-loads RTX Remix.
 
 **SKINNING IS OFF BY DEFAULT.** Do NOT enable skinning, modify skinning code, or discuss skinning infrastructure unless the user explicitly asks. When requested, read `src/comp/modules/skinning.hpp` and `src/comp/modules/skinning.cpp`.
 
@@ -26,7 +26,7 @@ The remix-comp codebase (`rtx_remix_tools/dx/remix-comp/`) is a C++20 compatibil
 | `remix-comp.ini` (in `assets/`) | Runtime config: `[FFP.Registers]`, `[Skinning]`, `[Diagnostics]`, `[Remix]` |
 | `premake5.lua` | Build system (Premake5 + VS2022) |
 
-Per-game copies: copy `src/comp/` to `patches/<GameName>/proxy/comp/`, use Premake template.
+Per-game setup: copy the entire `rtx_remix_tools/dx/remix-comp/` folder to `patches/<GameName>/`, then edit `src/comp/` directly.
 
 ## Game-Specific Configuration
 
@@ -79,16 +79,17 @@ python -m livetools trace <call_addr> --count 50 \
 
 ### Step 3: Copy comp/ and Configure
 
-1. Copy `rtx_remix_tools/dx/remix-comp/src/comp/` to `patches/<GameName>/proxy/comp/`
-2. Copy `remix-comp.ini` from `assets/`
-3. Edit `[FFP.Registers]` in `remix-comp.ini`
+Copy the entire `rtx_remix_tools/dx/remix-comp/` folder to `patches/<GameName>/` (excluding `build/`). Edit files directly:
+
+1. Edit `remix-comp.ini` (at game root) with discovered register layout
+2. Edit `src/comp/main.cpp`: set `WINDOW_CLASS_NAME`
+3. Customize `src/comp/modules/renderer.cpp` and `src/comp/game/game.cpp`
 
 ### Step 4: Build and Deploy
 
 ```bash
-cd patches/<GameName>/proxy
-premake5 vs2022
-# Build with VS2022
+cd patches/<GameName>
+build.bat release --name <GameName>
 ```
 
 Deploy: `.asi` + `remix-comp.ini` + `dinput8.dll` to game directory. Place `d3d9_remix.dll` there if using Remix.

@@ -13,7 +13,7 @@ Port a DX9 shader-based game to fixed-function pipeline (FFP) for RTX Remix comp
 
 ## What remix-comp Does
 
-The codebase (`rtx_remix_tools/dx/remix-comp/`) is a dinput8.dll ASI proxy that:
+Each game folder under `patches/<GameName>/` is a self-contained remix-comp project (copied from `rtx_remix_tools/dx/remix-comp/`). It is a dinput8.dll ASI proxy that:
 
 1. Captures VS constants (View, Projection, World matrices) from `SetVertexShaderConstantF` via `ffp_state::on_set_vs_const_f`
 2. Parses `SetVertexDeclaration` via `ffp_state::on_set_vertex_declaration` to detect BLENDWEIGHT+BLENDINDICES (skinned), POSITIONT (screen-space), NORMAL presence, and per-element byte offsets
@@ -46,10 +46,9 @@ The codebase (`rtx_remix_tools/dx/remix-comp/`) is a dinput8.dll ASI proxy that:
 | `src/comp/game/game.cpp` | Per-game address init (patterns, hooks) |
 | `src/comp/game/game.hpp` | Per-game variables and function typedefs |
 | `remix-comp.ini` | Runtime config: register layout, albedo stage, skinning toggle, diagnostics |
-| `build.bat` | Build script: `build.bat [release\|debug] [--name Name] [--comp CompDir]` |
-| `build_game.bat.template` | Copy to `patches/<GameName>/proxy/build.bat`, set GAME_NAME |
+| `build.bat` | Build script: `build.bat [release\|debug] [--name Name]` |
 
-**`src/comp/` is the TEMPLATE.** Copy it to `patches/<GameName>/proxy/comp/` and edit only the copy. The template must stay clean so new games start from a known-good state.
+**`rtx_remix_tools/dx/remix-comp/` is the TEMPLATE.** Each game gets a full copy under `patches/<GameName>/` — the entire folder is self-contained and can be distributed as a standalone repo. Edit `src/comp/` directly in the game's copy.
 
 ---
 
@@ -107,33 +106,27 @@ python -m graphics.directx.dx9.tracer analyze <JSONL> --shader-map
 
 ### Step 3: Set Up Per-Game Project
 
-**IMPORTANT:** `rtx_remix_tools/dx/remix-comp/src/comp/` is the **template**. NEVER edit it directly. Always copy it to the game's proxy folder and edit the copy.
+**IMPORTANT:** `rtx_remix_tools/dx/remix-comp/` is the **template**. NEVER edit it directly. Each game gets a full copy of the framework.
 
-1. Copy `rtx_remix_tools/dx/remix-comp/src/comp/` to `patches/<GameName>/proxy/comp/`
-2. Copy `rtx_remix_tools/dx/remix-comp/build_game.bat.template` to `patches/<GameName>/proxy/build.bat`
-3. Edit `build.bat`: set `GAME_NAME=<GameName>`
-4. Copy `rtx_remix_tools/dx/remix-comp/assets/remix-comp.ini` to `patches/<GameName>/proxy/remix-comp.ini`
-5. Edit `remix-comp.ini` with discovered register layout (see INI Config section below)
-6. Edit `comp/main.cpp`: set `WINDOW_CLASS_NAME` to the game's window class
-7. Customize `comp/modules/renderer.cpp` draw routing if needed (see Decision Trees below)
-8. Customize `comp/game/game.cpp` with game-specific address init if hooks are needed
-9. Update `kb.h` with discovered function signatures, structs, and globals
+1. Copy the entire `rtx_remix_tools/dx/remix-comp/` folder to `patches/<GameName>/` (excluding `build/` and `src/comp/`)
+2. The template `src/comp/` is already included — edit it directly in the game's copy
+3. Edit `remix-comp.ini` (at the game root) with discovered register layout (see INI Config section below)
+4. Edit `src/comp/main.cpp`: set `WINDOW_CLASS_NAME` to the game's window class
+5. Customize `src/comp/modules/renderer.cpp` draw routing if needed (see Decision Trees below)
+6. Customize `src/comp/game/game.cpp` with game-specific address init if hooks are needed
+7. Update `kb.h` with discovered function signatures, structs, and globals
+
+The game folder is now fully self-contained and can be distributed as a standalone git repo.
 
 ### Step 4: Build and Deploy
 
-From the game's proxy folder:
+From the game folder:
 ```bash
-cd patches/<GameName>/proxy
-build.bat release
+cd patches/<GameName>
+build.bat release --name <GameName>
 ```
 
-Or from the remix-comp root:
-```bash
-cd rtx_remix_tools/dx/remix-comp
-build.bat release --name <GameName> --comp ..\..\..\..\patches\<GameName>\proxy\comp
-```
-
-The build produces `<GameName>-comp.asi` and `dinput8.dll` in `patches/<GameName>/proxy/build/release/`. Deploy:
+The build produces `<GameName>-comp.asi` and `dinput8.dll` in `patches/<GameName>/build/bin/release/`. Deploy:
 - `<GameName>-comp.asi` to the game directory (or `plugins/` subfolder)
 - `dinput8.dll` to the game directory (copied automatically by build)
 - `remix-comp.ini` to the game directory
@@ -204,21 +197,17 @@ PreloadDLL=
 
 ## Architecture: What to Edit vs What to Leave Alone
 
-**`rtx_remix_tools/dx/remix-comp/` is the TEMPLATE. Never edit it per-game.** All per-game edits go in `patches/<GameName>/proxy/`. The `shared/` code stays at the template location and is compiled from there by `build.bat`.
+Each game folder under `patches/<GameName>/` is a **self-contained** copy of the full remix-comp framework. Edit files directly in the game's copy.
 
-| Component (in `patches/<GameName>/proxy/`) | Edit Per-Game? |
+| Component (in `patches/<GameName>/`) | Edit Per-Game? |
 |-----------|----------------|
 | `remix-comp.ini` register layout, albedo stage | **YES** |
-| `comp/main.cpp` WINDOW_CLASS_NAME | **YES** |
-| `comp/modules/renderer.cpp` draw routing | **YES** -- main draw routing |
-| `comp/game/game.cpp` address init and hooks | **YES** -- per-game hooks |
-| `comp/game/structs.hpp` game structs | **YES** -- per-game data structures |
-
-| Component (in `rtx_remix_tools/dx/remix-comp/`) | Edit Per-Game? |
-|-----------|----------------|
-| `src/shared/common/ffp_state.cpp` engage/disengage/transforms | MAYBE -- only for unusual FFP needs (affects all games) |
-| `src/shared/common/config.hpp` | NO -- add new INI sections if needed |
-| `src/comp/` (template) | **NEVER** -- copy to patches/, edit the copy |
+| `src/comp/main.cpp` WINDOW_CLASS_NAME | **YES** |
+| `src/comp/modules/renderer.cpp` draw routing | **YES** -- main draw routing |
+| `src/comp/game/game.cpp` address init and hooks | **YES** -- per-game hooks |
+| `src/comp/game/structs.hpp` game structs | **YES** -- per-game data structures |
+| `src/shared/common/ffp_state.cpp` engage/disengage/transforms | MAYBE -- only for unusual FFP needs |
+| `src/shared/common/config.hpp` | MAYBE -- add new INI sections if needed |
 | `src/comp/modules/d3d9ex.cpp` | NO -- forwards all 119 methods |
 | `src/comp/modules/diagnostics.cpp` | NO -- generic frame logger |
 | `src/comp/modules/imgui.cpp` | NO -- debug overlay |

@@ -2,6 +2,7 @@
 #include "renderer.hpp"
 
 #include "imgui.hpp"
+#include "diagnostics.hpp"
 #include "shared/common/ffp_state.hpp"
 
 namespace comp
@@ -96,6 +97,8 @@ namespace comp
 			im->m_stats._drawcall_using_vs.track_single();
 		}
 
+		if (auto* d = diagnostics::get()) d->on_draw_primitive(ffp.draw_call_count(), PrimitiveType, StartVertex, PrimitiveCount);
+
 		ctx.restore_all(dev);
 		ctx.reset_context();
 
@@ -179,6 +182,8 @@ namespace comp
 
 			ffp.restore_textures(dev);
 		}
+
+		if (auto* d = diagnostics::get()) d->on_draw_indexed_prim(ffp.draw_call_count(), dev, PrimitiveType, BaseVertexIndex, NumVertices, primCount);
 
 		ctx.restore_all(dev);
 		ctx.reset_context();

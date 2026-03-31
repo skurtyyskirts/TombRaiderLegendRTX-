@@ -1,10 +1,15 @@
 @echo off
-:: Per-game build wrapper. Copy to patches/<GameName>/proxy/build.bat
-:: Edit GAME_NAME below, then run: build.bat [release|debug]
+:: Per-game build script.
+::
+:: NEW WORKFLOW: Copy the entire rtx_remix_tools/dx/remix-comp/ folder to
+:: patches/<GameName>/ (excluding build/). Edit src/comp/ directly.
+:: Then run: build.bat release --name <GameName>
+::
+:: This file is kept as a reference only. The game folder already contains
+:: the real build.bat (the master build script).
 
-set "GAME_NAME=MyGame"
-
-:: Locate remix-comp root (adjust if your patches/ folder depth differs)
-set "REMIX_COMP=%~dp0..\..\..\rtx_remix_tools\dx\remix-comp"
-
-call "%REMIX_COMP%\build.bat" %1 --name %GAME_NAME% --comp "%~dp0comp"
+echo This template is no longer used. Each game folder contains the full
+echo remix-comp framework with the master build.bat included.
+echo.
+echo Usage: build.bat release --name MyGame
+exit /b 1

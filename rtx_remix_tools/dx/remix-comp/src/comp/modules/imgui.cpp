@@ -4,6 +4,7 @@
 #include "imgui_internal.h"
 #include "renderer.hpp"
 #include "tracer.hpp"
+#include "diagnostics.hpp"
 #include "shared/common/imgui_helper.hpp"
 #include "shared/common/ffp_state.hpp"
 #include "shared/common/config.hpp"
@@ -424,6 +425,93 @@ namespace comp
 		}
 	}
 
+	void tab_diagnostics()
+	{
+		auto* d = diagnostics::get();
+		if (!d)
+		{
+			ImGui::TextColored(ImVec4(1, 0, 0, 1), "Diagnostics module not loaded");
+			ImGui::TextWrapped("Set [Diagnostics] Enabled=1 in remix-comp.ini to enable.");
+			return;
+		}
+
+		SPACEY16;
+
+		// Status
+		if (d->is_capturing())
+		{
+			ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "CAPTURING");
+			ImGui::SameLine();
+			ImGui::Text("Frame %d / %d", d->frames_captured(), d->frames_to_capture());
+			ImGui::ProgressBar(static_cast<float>(d->frames_captured()) / d->frames_to_capture());
+		}
+		else
+		{
+			ImGui::Text("Status: IDLE");
+		}
+
+		SPACEY8;
+		ImGui::Separator();
+		SPACEY8;
+
+		// Capture controls
+		static int diag_frames = 3;
+		ImGui::SliderInt("Frames to capture", &diag_frames, 1, 30);
+
+		SPACEY8;
+
+		ImGui::BeginDisabled(d->is_capturing());
+		if (ImGui::Button("Start Capture", ImVec2(200, 0)))
+			d->start_capture(diag_frames);
+		ImGui::EndDisabled();
+
+		ImGui::SameLine();
+
+		ImGui::BeginDisabled(!d->is_capturing());
+		if (ImGui::Button("Stop Capture", ImVec2(200, 0)))
+			d->stop_capture();
+		ImGui::EndDisabled();
+
+		// Last capture info
+		if (!d->last_log_path().empty())
+		{
+			SPACEY8;
+			ImGui::Text("Last log: %s", d->last_log_path().c_str());
+		}
+
+		SPACEY16;
+		ImGui::Separator();
+		SPACEY8;
+
+		// Log category checkboxes
+		ImGui::Text("Log Categories:");
+		SPACEY8;
+
+		ImGui::Checkbox("Draw Calls", &d->cat_draw_calls);
+		ImGui::SameLine(220);
+		ImGui::TextDisabled("DIP/DP params, strides, decl flags");
+
+		ImGui::Checkbox("VS Constants", &d->cat_vs_constants);
+		ImGui::SameLine(220);
+		ImGui::TextDisabled("Register writes, matrix values");
+
+		ImGui::Checkbox("Vertex Data", &d->cat_vertex_data);
+		ImGui::SameLine(220);
+		ImGui::TextDisabled("Raw vertex bytes for early draws");
+
+		ImGui::Checkbox("Declarations", &d->cat_declarations);
+		ImGui::SameLine(220);
+		ImGui::TextDisabled("Vertex element breakdown");
+
+		ImGui::Checkbox("Textures", &d->cat_textures);
+		ImGui::SameLine(220);
+		ImGui::TextDisabled("Stage bindings, unique counts");
+
+		ImGui::Checkbox("Present Info", &d->cat_present_info);
+		ImGui::SameLine(220);
+		ImGui::TextDisabled("Frame summary, VS regs written");
+	}
+
 	// -----------
 
 	void imgui::devgui()
@@ -478,6 +566,7 @@ namespace comp
 			ImGui::PopStyleColor();
 			ImGui::PopStyleVar(1);
 			ADD_TAB("FFP", tab_ffp);
+			ADD_TAB("Diagnostics", tab_diagnostics);
 			ADD_TAB("Tracer", tab_tracer);
 			ADD_TAB("Dev", tab_dev);
 			ADD_TAB("About", tab_about);

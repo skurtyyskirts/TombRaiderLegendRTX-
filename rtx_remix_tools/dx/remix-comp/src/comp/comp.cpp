@@ -93,8 +93,9 @@ namespace comp
 		shared::common::loader::module_loader::register_module(std::make_unique<imgui>());
 		shared::common::loader::module_loader::register_module(std::make_unique<renderer>());
 
-		// FFP diagnostics (conditional on config)
 		auto& cfg = shared::common::config::get();
+
+		// Diagnostics module (on-demand capture available from ImGui when loaded)
 		if (cfg.diagnostics.enabled)
 			shared::common::loader::module_loader::register_module(std::make_unique<diagnostics>());
 

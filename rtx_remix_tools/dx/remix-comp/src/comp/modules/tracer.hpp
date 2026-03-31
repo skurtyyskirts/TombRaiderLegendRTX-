@@ -85,6 +85,9 @@ namespace comp
 		uint64_t last_capture_size_ = 0;
 		int last_capture_records_ = 0;
 
+		// FFP state saved before capture (to restore after)
+		bool ffp_was_enabled_ = false;
+
 		// Helpers
 		void flush_buffer();
 		void buf_append(const char* str, size_t len);

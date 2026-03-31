@@ -1,82 +1,41 @@
-# Windows image file caches
-Thumbs.db
-ehthumbs.db
+# Whitelist .gitignore — only tracked file types and directories are allowed.
+# Everything else (build artifacts, IDE files, OS junk) is ignored by default.
+# Goal: Prevent uploading files that may be copyrighted or are otherwise unnecessary.
 
-# Folder config file
-Desktop.ini
+# Ignore everything
+*
 
-# Recycle Bin used on file shares
-$RECYCLE.BIN/
+# Allow looking into subdirectories
+!*/
 
-# Windows Installer files
-*.cab
-*.msi
-*.msm
-*.msp
+# Source code
+!*.cpp
+!*.hpp
+!*.h
+!*.c
+!*.inc
+!*.inl
 
-# =========================
-# Operating System Files
-# =========================
-# Windows
-*.lnk
+# Build script and config
+!build.bat
+!*.ini
+!*.conf
+!.gitignore
+!.editorconfig
 
-# OSX
-# =========================
+# Dependency libraries needed for linking
+!*.lib
 
-.DS_Store
-.AppleDouble
-.LSOverride
+# Deployed binaries (ASI loader)
+!*.dll
+!*.def
 
-# Icon must end with two \r
-Icon
+# Assets
+!*.png
 
+# Documentation
+!*.md
+!LICENSE
 
-# Thumbnails
-._*
-
-# Files that might appear on external disk
-.Spotlight-V100
-.Trashes
-
-# Directories potentially created on remote AFP share
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-
-*.obj
-*.tlog
-*.log
-*.lastbuildstate
-*.idb
-*.exp
-*.ilk
-*.unsuccessfulbuild
-*.sdf
-*.opensdf
-*.pdb
-*.suo
-*.zip
-
-# Additional stuff
-bin
-obj
-build
-user*.bat
-*.psd
-*.tmp
-*.aps
-
-.vs/*
-.vscode/*
-!.vscode/tracked
-!.vscode/readme.txt
-
-# IDA
-# =========================
-*.id0
-*.id1
-*.id2
-*.nam
-*.til
+# Re-ignore build output (overrides the above)
+build/

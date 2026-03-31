@@ -1,11 +1,13 @@
 ---
-description: Context budget for remix-comp (rtx_remix_tools/dx/remix-comp/). Skip-list of boilerplate files with summaries so you never need to read them. Loaded when working on any file under rtx_remix_tools/ or patches/**/proxy/.
-globs: rtx_remix_tools/**,patches/**/proxy/**
+description: Context budget for remix-comp. Skip-list of boilerplate files with summaries so you never need to read them. Loaded when working on any file under rtx_remix_tools/ or a per-game patches folder.
+paths:
+  - rtx_remix_tools/**
+  - patches/**/src/**
 ---
 
 # remix-comp: Context Guide
 
-All paths relative to `rtx_remix_tools/dx/remix-comp/`.
+Each game folder under `patches/<Game>/` is a self-contained remix-comp project. All paths below are relative to the game folder root (e.g. `patches/FNV/`) or to the framework template at `rtx_remix_tools/dx/remix-comp/`.
 
 ## Do Not Read
 

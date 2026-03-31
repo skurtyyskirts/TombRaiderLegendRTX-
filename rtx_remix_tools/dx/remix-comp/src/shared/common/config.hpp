@@ -40,8 +40,17 @@ namespace shared::common
 		struct diagnostics_settings
 		{
 			bool enabled = true;
+			bool auto_capture = true;
 			int delay_ms = 50000;
 			int log_frames = 3;
+
+			// Log categories (defaults, overridable from ImGui at runtime)
+			bool log_draw_calls = true;
+			bool log_vs_constants = true;
+			bool log_vertex_data = true;
+			bool log_declarations = true;
+			bool log_textures = true;
+			bool log_present_info = true;
 		} diagnostics;
 
 		struct remix_settings

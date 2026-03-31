@@ -74,8 +74,15 @@ namespace shared::common
 
 		// [Diagnostics]
 		diagnostics.enabled = get_bool("Diagnostics", "Enabled", true);
+		diagnostics.auto_capture = get_bool("Diagnostics", "AutoCapture", true);
 		diagnostics.delay_ms = get_int("Diagnostics", "DelayMs", 50000);
 		diagnostics.log_frames = get_int("Diagnostics", "LogFrames", 3);
+		diagnostics.log_draw_calls = get_bool("Diagnostics", "LogDrawCalls", true);
+		diagnostics.log_vs_constants = get_bool("Diagnostics", "LogVSConstants", true);
+		diagnostics.log_vertex_data = get_bool("Diagnostics", "LogVertexData", true);
+		diagnostics.log_declarations = get_bool("Diagnostics", "LogDeclarations", true);
+		diagnostics.log_textures = get_bool("Diagnostics", "LogTextures", true);
+		diagnostics.log_present_info = get_bool("Diagnostics", "LogPresentInfo", true);
 
 		// [Tracer]
 		tracer.backtrace_depth = get_int("Tracer", "BacktraceDepth", 8);

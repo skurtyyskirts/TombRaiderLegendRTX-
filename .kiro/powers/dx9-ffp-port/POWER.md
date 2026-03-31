@@ -16,7 +16,7 @@ Port a DX9 shader-based game to fixed-function pipeline (FFP) for RTX Remix comp
 
 ## What remix-comp Does
 
-The codebase (`rtx_remix_tools/dx/remix-comp/`) is a C++20 compatibility mod based on remix-comp-base that:
+Each game folder under `patches/<GameName>/` is a self-contained remix-comp project (copied from `rtx_remix_tools/dx/remix-comp/`). It is a C++20 compatibility mod that:
 
 1. Captures VS constants (View, Projection, World matrices) from `SetVertexShaderConstantF`
 2. Parses `SetVertexDeclaration` to detect BLENDWEIGHT+BLENDINDICES (skinned), POSITIONT (screen-space), NORMAL presence, and per-element byte offsets
@@ -45,7 +45,7 @@ The codebase (`rtx_remix_tools/dx/remix-comp/`) is a C++20 compatibility mod bas
 | `remix-comp.ini` (in `assets/`) | Runtime config: `[FFP.Registers]`, `[Skinning]`, `[Diagnostics]`, `[Remix]` |
 | `premake5.lua` | Build system (Premake5 + VS2022) |
 
-Per-game copies: copy `src/comp/` to `patches/<GameName>/proxy/comp/`, use Premake template.
+Per-game setup: copy the entire `rtx_remix_tools/dx/remix-comp/` folder to `patches/<GameName>/`, then edit `src/comp/` directly.
 
 ---
 
@@ -114,18 +114,18 @@ Captures: startRegister, Vector4fCount, and the first 4 vec4 constants of actual
 
 ### Step 3: Copy comp/ and Configure
 
-1. Copy `rtx_remix_tools/dx/remix-comp/src/comp/` to `patches/<GameName>/proxy/comp/`
-2. Copy `remix-comp.ini` from `assets/` to `patches/<GameName>/proxy/`
-3. Edit `remix-comp.ini` `[FFP.Registers]` section with discovered register values
-4. Use the Premake5 template (`premake5_game.lua.template`) for the game-specific build
-5. Update `kb.h` with discovered function signatures, structs, and globals
+Copy the entire `rtx_remix_tools/dx/remix-comp/` folder to `patches/<GameName>/` (excluding `build/`). Edit files directly:
+
+1. Edit `remix-comp.ini` (at game root) with discovered register layout
+2. Edit `src/comp/main.cpp`: set `WINDOW_CLASS_NAME`
+3. Customize `src/comp/modules/renderer.cpp` and `src/comp/game/game.cpp`
+4. Update `kb.h` with discovered function signatures, structs, and globals
 
 ### Step 4: Build and Deploy
 
 ```bash
-cd patches/<GameName>/proxy
-premake5 vs2022
-# Build with Visual Studio or MSBuild
+cd patches/<GameName>
+build.bat release --name <GameName>
 ```
 
 Deploy to game directory: `.asi` file + `remix-comp.ini` + `dinput8.dll` (Ultimate ASI Loader). Place `d3d9_remix.dll` there too if using Remix.

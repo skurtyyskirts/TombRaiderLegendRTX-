@@ -76,7 +76,8 @@ namespace comp
 		write_pos_ = 0;
 
 #ifdef HAS_FFP_STATE
-		// Disable FFP during capture to record unmodified game calls
+		// Save FFP state and disable during capture to record unmodified game calls
+		ffp_was_enabled_ = shared::common::ffp_state::get().is_enabled();
 		shared::common::ffp_state::get().set_enabled(false);
 #endif
 
@@ -110,8 +111,8 @@ namespace comp
 		}
 
 #ifdef HAS_FFP_STATE
-		// Re-enable FFP
-		shared::common::ffp_state::get().set_enabled(true);
+		// Restore FFP to its pre-capture state (don't force it on if config had it off)
+		shared::common::ffp_state::get().set_enabled(ffp_was_enabled_);
 #endif
 
 		shared::common::log("Tracer",

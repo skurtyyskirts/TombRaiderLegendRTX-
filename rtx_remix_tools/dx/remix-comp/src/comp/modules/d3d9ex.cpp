@@ -4,6 +4,7 @@
 #include "imgui.hpp"
 #include "renderer.hpp"
 #include "tracer.hpp"
+#include "diagnostics.hpp"
 #include "shared/common/shader_cache.hpp"
 
 using comp::tracer;
@@ -137,7 +138,9 @@ namespace comp
 	HRESULT d3d9ex::D3D9Device::Present(CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion)
 	{
 		TRACE_IF_ACTIVE(trace_Present, pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
-		shared::common::ffp_state::get().on_present();
+		auto& ffp = shared::common::ffp_state::get();
+		if (auto* d = diagnostics::get()) d->on_present(ffp.frame_count(), ffp.draw_call_count(), ffp.scene_count());
+		ffp.on_present();
 		auto hr = m_pIDirect3DDevice9->Present(pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
 		if (auto* t = tracer::get()) t->on_present();
 		return hr;
@@ -285,6 +288,7 @@ namespace comp
 	{
 		TRACE_IF_ACTIVE_NOARGS(trace_BeginScene);
 		shared::common::ffp_state::get().on_begin_scene();
+		if (auto* d = diagnostics::get()) d->on_begin_scene(shared::common::ffp_state::get().scene_count());
 
 		if (renderer::is_initialized()) {
 			on_begin_scene_cb();
@@ -625,6 +629,7 @@ namespace comp
 	{
 		TRACE_IF_ACTIVE(trace_SetVertexShader, pShader);
 		shared::common::ffp_state::get().on_set_vertex_shader(pShader);
+		if (auto* d = diagnostics::get()) d->on_set_vertex_shader(pShader);
 		return m_pIDirect3DDevice9->SetVertexShader(pShader);
 	}
 
@@ -638,6 +643,7 @@ namespace comp
 	{
 		TRACE_IF_ACTIVE(trace_SetVertexShaderConstantF, StartRegister, pConstantData, Vector4fCount);
 		shared::common::ffp_state::get().on_set_vs_const_f(StartRegister, pConstantData, Vector4fCount);
+		if (auto* d = diagnostics::get()) d->on_set_vs_const_f(StartRegister, pConstantData, Vector4fCount);
 		return m_pIDirect3DDevice9->SetVertexShaderConstantF(StartRegister, pConstantData, Vector4fCount);
 	}
 
