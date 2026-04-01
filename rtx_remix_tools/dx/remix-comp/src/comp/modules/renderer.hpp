@@ -9,305 +9,58 @@ namespace comp
 		extern void init_texture_addons(bool release = false);
 	}
 
+	/*
+	 * RAII-style save/restore context for D3D9 state around a single draw call.
+	 * Callers save specific state before modifying it, then call restore_all()
+	 * or per-state restore methods after the draw, then reset_context().
+	 */
 	class drawcall_mod_context
 	{
 	public:
+		bool has_saved_renderstate(const D3DRENDERSTATETYPE& state) const;
+		bool has_saved_renderstate(const uint32_t& state) const;
 
-		bool has_saved_renderstate(const D3DRENDERSTATETYPE& state) const
-		{
-			if (saved_render_state_.contains(state)) {
-				return true;
-			}
+		void set_texture_transform(IDirect3DDevice9* device, const D3DXMATRIX* matrix);
+		void save_vs(IDirect3DDevice9* device);
+		void save_ps(IDirect3DDevice9* device);
+		void save_texture(IDirect3DDevice9* device, const bool stage);
+		bool save_rs(IDirect3DDevice9* device, const D3DRENDERSTATETYPE& state);
+		bool save_rs(IDirect3DDevice9* device, const uint32_t& state);
+		void save_ss(IDirect3DDevice9* device, const D3DSAMPLERSTATETYPE& state);
+		bool save_tss(IDirect3DDevice9* device, const D3DTEXTURESTAGESTATETYPE& type);
+		void save_view_transform(IDirect3DDevice9* device);
+		void save_projection_transform(IDirect3DDevice9* device);
 
-			return false;
-		}
+		void restore_vs(IDirect3DDevice9* device);
+		void restore_ps(IDirect3DDevice9* device);
+		void restore_texture(IDirect3DDevice9* device, const bool stage);
+		void restore_render_state(IDirect3DDevice9* device, const D3DRENDERSTATETYPE& state);
+		void restore_sampler_state(IDirect3DDevice9* device, const D3DSAMPLERSTATETYPE& state);
+		void restore_texture_stage_state(IDirect3DDevice9* device, const D3DTEXTURESTAGESTATETYPE& type);
+		void restore_texture_transform(IDirect3DDevice9* device);
+		void restore_view_transform(IDirect3DDevice9* device);
+		void restore_projection_transform(IDirect3DDevice9* device);
+		void restore_all(IDirect3DDevice9* device);
 
-		bool has_saved_renderstate(const uint32_t& state) const {
-			return has_saved_renderstate((D3DRENDERSTATETYPE)state);
-		}
-
-		// ---
-
-		// set texture 0 transform
-		void set_texture_transform(IDirect3DDevice9* device, const D3DXMATRIX* matrix)
-		{
-			if (matrix)
-			{
-				device->SetTransform(D3DTS_TEXTURE0, matrix);
-				tex0_transform_set_ = true;
-			}
-		}
-
-		// save vertex shader
-		void save_vs(IDirect3DDevice9* device)
-		{
-			device->GetVertexShader(&vs_);
-			vs_set_ = true;
-		}
-
-		// save vertex shader
-		void save_ps(IDirect3DDevice9* device)
-		{
-			device->GetPixelShader(&ps_);
-			ps_set_ = true;
-		}
-
-		// save texture at stage 0 or 1
-		void save_texture(IDirect3DDevice9* device, const bool stage)
-		{
-			if (!stage)
-			{
-#if DEBUG
-				if (tex0_set_) {
-					OutputDebugStringA("save_texture:: tex0 was already saved\n"); return;
-				}
-#endif
-
-				device->GetTexture(0, &tex0_);
-				tex0_set_ = true;
-			}
-			else
-			{
-#if DEBUG
-				if (tex1_set_) {
-					OutputDebugStringA("save_texture:: tex1 was already saved\n"); return;
-				}
-#endif
-
-				device->GetTexture(1, &tex1_);
-				tex1_set_ = true;
-			}
-		}
-
-		// save render state (e.g. D3DRS_TEXTUREFACTOR) - returns false if rs was previously saved
-		bool save_rs(IDirect3DDevice9* device, const D3DRENDERSTATETYPE& state)
-		{
-			if (saved_render_state_.contains(state)) {
-				return false;
-			}
-
-			DWORD temp;
-			device->GetRenderState(state, &temp);
-			saved_render_state_[state] = temp;
-			return true;
-		}
-
-		bool save_rs(IDirect3DDevice9* device, const uint32_t& state)
-		{
-			return save_rs(device, (D3DRENDERSTATETYPE)state);
-		}
-
-		// save sampler state (D3DSAMPLERSTATETYPE)
-		void save_ss(IDirect3DDevice9* device, const D3DSAMPLERSTATETYPE& state)
-		{
-			if (saved_sampler_state_.contains(state)) {
-				return;
-			}
-
-			DWORD temp;
-			device->GetSamplerState(0, state, &temp);
-			saved_sampler_state_[state] = temp;
-		}
-
-		// save texture stage 0 state (e.g. D3DTSS_ALPHAARG1) - returns false if tss was previously saved
-		bool save_tss(IDirect3DDevice9* device, const D3DTEXTURESTAGESTATETYPE& type)
-		{
-			if (saved_texture_stage_state_.contains(type)) {
-				return false;
-			}
-
-			DWORD temp;
-			device->GetTextureStageState(0, type, &temp);
-			saved_texture_stage_state_[type] = temp;
-			return true;
-		}
-
-		// save D3DTS_VIEW
-		void save_view_transform(IDirect3DDevice9* device)
-		{
-			device->GetTransform(D3DTS_VIEW, &view_transform_);
-			view_transform_set_ = true;
-		}
-
-		// save D3DTS_PROJECTION
-		void save_projection_transform(IDirect3DDevice9* device)
-		{
-			device->GetTransform(D3DTS_PROJECTION, &projection_transform_);
-			projection_transform_set_ = true;
-		}
-
-		void restore_vs(IDirect3DDevice9* device)
-		{
-			if (vs_set_)
-			{
-				device->SetVertexShader(vs_);
-				if (vs_) vs_->Release();
-				vs_ = nullptr;
-				vs_set_ = false;
-			}
-		}
-
-		void restore_ps(IDirect3DDevice9* device)
-		{
-			if (ps_set_)
-			{
-				device->SetPixelShader(ps_);
-				if (ps_) ps_->Release();
-				ps_ = nullptr;
-				ps_set_ = false;
-			}
-		}
-
-		void restore_texture(IDirect3DDevice9* device, const bool stage)
-		{
-			if (!stage)
-			{
-				if (tex0_set_)
-				{
-					device->SetTexture(0, tex0_);
-					if (tex0_) tex0_->Release();
-					tex0_ = nullptr;
-					tex0_set_ = false;
-				}
-			}
-			else
-			{
-				if (tex1_set_)
-				{
-					device->SetTexture(1, tex1_);
-					if (tex1_) tex1_->Release();
-					tex1_ = nullptr;
-					tex1_set_ = false;
-				}
-			}
-		}
-
-		// restore a specific render state (e.g. D3DRS_TEXTUREFACTOR)
-		void restore_render_state(IDirect3DDevice9* device, const D3DRENDERSTATETYPE& state)
-		{
-			if (saved_render_state_.contains(state)) {
-				device->SetRenderState(state, saved_render_state_[state]);
-			}
-		}
-
-		// restore a specific sampler state (D3DSAMPLERSTATETYPE)
-		void restore_sampler_state(IDirect3DDevice9* device, const D3DSAMPLERSTATETYPE& state)
-		{
-			if (saved_sampler_state_.contains(state)) {
-				device->SetSamplerState(0, state, saved_sampler_state_[state]);
-			}
-		}
-
-		// restore a specific texture stage 0 state (e.g. D3DTSS_ALPHAARG1)
-		void restore_texture_stage_state(IDirect3DDevice9* device, const D3DTEXTURESTAGESTATETYPE& type)
-		{
-			if (saved_texture_stage_state_.contains(type)) {
-				device->SetTextureStageState(0, type, saved_texture_stage_state_[type]);
-			}
-		}
-
-		void restore_texture_transform(IDirect3DDevice9* device)
-		{
-			if (tex0_transform_set_)
-			{
-				device->SetTransform(D3DTS_TEXTURE0, &shared::globals::IDENTITY);
-				tex0_transform_set_ = false;
-			}
-		}
-
-		// restore saved D3DTS_VIEW
-		void restore_view_transform(IDirect3DDevice9* device)
-		{
-			if (view_transform_set_)
-			{
-				device->SetTransform(D3DTS_VIEW, &view_transform_);
-				view_transform_set_ = false;
-			}
-		}
-
-		// restore saved D3DTS_PROJECTION
-		void restore_projection_transform(IDirect3DDevice9* device)
-		{
-			if (projection_transform_set_)
-			{
-				device->SetTransform(D3DTS_PROJECTION, &projection_transform_);
-				projection_transform_set_ = false;
-			}
-		}
-
-		// Restore saved generic state (render states, sampler states, TSS).
-		// Shaders, textures, and transforms are managed explicitly by their callers.
-		void restore_all(IDirect3DDevice9* device)
-		{
-			for (auto& rs : saved_render_state_) {
-				device->SetRenderState(rs.first, rs.second);
-			}
-
-			for (auto& ss : saved_sampler_state_) {
-				device->SetSamplerState(0, ss.first, ss.second);
-			}
-
-			for (auto& tss : saved_texture_stage_state_) {
-				device->SetTextureStageState(0, tss.first, tss.second);
-			}
-		}
-
-		void reset_context()
-		{
-			if (vs_set_ && vs_) vs_->Release();
-			vs_ = nullptr; vs_set_ = false;
-			if (ps_set_ && ps_) ps_->Release();
-			ps_ = nullptr; ps_set_ = false;
-			if (tex0_set_ && tex0_) tex0_->Release();
-			tex0_ = nullptr; tex0_set_ = false;
-			if (tex1_set_ && tex1_) tex1_->Release();
-			tex1_ = nullptr; tex1_set_ = false;
-			tex0_transform_set_ = false;
-			view_transform_set_ = false;
-			projection_transform_set_ = false;
-			saved_render_state_.clear();
-			saved_sampler_state_.clear();
-			saved_texture_stage_state_.clear();
-			modifiers.reset();
-			info.reset();
-		}
+		void reset_context();
 
 		struct modifiers_s
 		{
 			bool do_not_render = false;
-
-			void reset()
-			{
-				do_not_render = false;
-			}
+			void reset() { do_not_render = false; }
 		};
-
-		// special handlers for the next prim/s
 		modifiers_s modifiers;
 
 		struct info_s
 		{
-			// put any info about the current pass here if needed
-			// info will be reset after the current drawcall
-
-			//std::string_view shader_name;
 			IDirect3DDevice9* device_ptr = nullptr;
-			
-			void reset()
-			{
-				//shader_name = "";
-				device_ptr = nullptr;
-			}
+			void reset() { device_ptr = nullptr; }
 		};
-
-		// holds information about the current pass
 		info_s info;
 
-		// constructor for singleton
 		drawcall_mod_context() = default;
 
 	private:
-		// Render states to save
 		IDirect3DVertexShader9* vs_ = nullptr;
 		IDirect3DPixelShader9* ps_ = nullptr;
 		IDirect3DBaseTexture9* tex0_ = nullptr;
@@ -317,21 +70,16 @@ namespace comp
 		bool tex0_set_ = false;
 		bool tex1_set_ = false;
 		bool tex0_transform_set_ = false;
-		char pad1[3]; // pad to align by 4
+		char pad1[3];
 
 		D3DMATRIX view_transform_ = {};
 		D3DMATRIX projection_transform_ = {};
 		bool view_transform_set_ = false;
 		bool projection_transform_set_ = false;
-		char pad2[2]; // pad to align by 4
+		char pad2[2];
 
-		// store saved render states (with the type as the key)
 		std::unordered_map<D3DRENDERSTATETYPE, DWORD> saved_render_state_;
-
-		// store saved render states (with the type as the key)
 		std::unordered_map<D3DSAMPLERSTATETYPE, DWORD> saved_sampler_state_;
-
-		// store saved texture stage states (with type as the key)
 		std::unordered_map<D3DTEXTURESTAGESTATETYPE, DWORD> saved_texture_stage_state_;
 	};
 
