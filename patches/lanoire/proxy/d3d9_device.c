@@ -72,7 +72,7 @@ extern void log_floats_dec(const char *prefix, float *data, unsigned int count);
 
 /* ---- Diagnostic logging ---- */
 #define DIAG_LOG_FRAMES 5
-#define DIAG_DELAY_MS 90000   /* 90 seconds — wait for gameplay */
+#define DIAG_DELAY_MS 5000    /* 5 seconds — fast diagnostics */
 #define DIAG_ENABLED 1
 
 #define DIAG_ACTIVE(self) \
