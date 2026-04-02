@@ -53,6 +53,7 @@ tools/jdk-*/
 *.dll
 !graphics/directx/dx9/tracer/src/*.dll
 !rtx_remix_tools/dx/remix-comp/assets/*.dll
+!rtx_remix_tools/dx/remix-comp-proxy/assets/*.dll
 
 
 # Research artifacts
