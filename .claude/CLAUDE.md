@@ -2,14 +2,17 @@
 
 ## Read-Only Templates
 
-These directories are **templates** shared across all game projects. **NEVER modify them** unless the user explicitly asks to change the template itself:
+These directories are **shared tooling and templates**. Do not modify them for game-specific work — per-game changes go in `patches/<GameName>/`.
 
-- `rtx_remix_tools/` — remix-comp-proxy framework (d3d9.dll proxy), DX analysis scripts
-- `retools/` — static analysis toolkit (decompiler, search, sigdb, etc.)
-- `livetools/` — Frida-based dynamic analysis
-- `graphics/` — DX9 tracer framework
+- `rtx_remix_tools/dx/remix-comp-proxy/` — proxy framework **template** (copied per-game)
+- `rtx_remix_tools/dx/scripts/` — DX9 analysis scripts (shared tooling)
+- `retools/` — static analysis toolkit (shared tooling)
+- `livetools/` — Frida-based dynamic analysis (shared tooling)
+- `graphics/` — DX9 tracer framework (shared tooling)
 
 **Per-game work goes in `patches/<GameName>/`.** When starting a new game, copy `rtx_remix_tools/dx/remix-comp-proxy/` (excluding `build/`) to `patches/<GameName>/` and edit the copy. If the user says "edit remix-comp-proxy code" without specifying, ask whether they mean the template or a game copy.
+
+Shared tooling can be modified to improve the tools themselves — just not for game-specific customization.
 
 ---
 
@@ -17,7 +20,7 @@ These directories are **templates** shared across all game projects. **NEVER mod
 
 **Never run static analysis tools directly.** Delegate to a `static-analyzer` subagent. Only exceptions — run these inline:
 - `sigdb.py identify` / `fingerprint` (single-function ID, <5s)
-- `context.py assemble` / `postprocess` (context gathering, <5s)
+- `context.py assemble` / `postprocess` (context gathering, <5s; use `--no-dataflow` on large functions)
 - `dataflow.py --constants` / `--slice` (single-function analysis, <5s)
 - `readmem.py` (single typed read from PE, <5s)
 - `asi_patcher.py build` (build step, not analysis)
