@@ -142,6 +142,7 @@ namespace comp
 		if (!ffp.is_enabled() || !ffp.view_proj_valid())
 		{
 			// Transforms not ready or FFP disabled: passthrough with shaders
+			ffp.disengage(dev);
 			hr = dev->DrawIndexedPrimitive(PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, startIndex, primCount);
 			im->m_stats._drawcall_indexed_prim.track_single();
 			im->m_stats._drawcall_indexed_prim_using_vs.track_single();
