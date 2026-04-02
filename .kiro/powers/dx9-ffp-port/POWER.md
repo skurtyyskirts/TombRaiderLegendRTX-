@@ -62,6 +62,8 @@ python rtx_remix_tools/dx/scripts/find_d3d_calls.py "<game.exe>"
 python rtx_remix_tools/dx/scripts/find_vs_constants.py "<game.exe>"
 python rtx_remix_tools/dx/scripts/decode_vtx_decls.py "<game.exe>" --scan
 python rtx_remix_tools/dx/scripts/find_device_calls.py "<game.exe>"
+python rtx_remix_tools/dx/scripts/find_skinning.py "<game.exe>"
+python rtx_remix_tools/dx/scripts/find_blend_states.py "<game.exe>"
 ```
 
 Use the script output to guide deeper analysis with `retools` (decompile specific call sites) and `livetools` (trace live values).
@@ -157,9 +159,12 @@ The VS constant register layout is defined in `src/shared/common/ffp_state.hpp` 
 int vs_reg_view_start_ = 0;    int vs_reg_view_end_ = 4;
 int vs_reg_proj_start_ = 4;    int vs_reg_proj_end_ = 8;
 int vs_reg_world_start_ = 16;  int vs_reg_world_end_ = 20;
-int vs_reg_bone_threshold_ = 20;
-int vs_regs_per_bone_ = 3;     int vs_bone_min_regs_ = 3;
+int vs_reg_bone_threshold_ = 20;   // first register treated as bone palette
+int vs_regs_per_bone_ = 3;        // 3 = 4x3 packed, 4 = full 4x4
+int vs_bone_min_regs_ = 3;        // min count to qualify as bone upload
 ```
+
+**Bone config:** Run `find_skinning.py` to determine bone start register and upload pattern. Some games upload all bones at once; others upload in groups until hitting a max (e.g., groups of 15, max 75). If grouped, lower `vs_bone_min_regs_`. If bone uploads overlap with non-bone constants, raise `vs_reg_bone_threshold_`.
 
 Other game-specific INI settings:
 - `[FFP] AlbedoStage=0` -- which texture stage holds the diffuse/albedo
@@ -224,6 +229,8 @@ viewProjValid AND lastDecl AND !curDeclHasPosT AND !curDeclIsSkinned?
 | `python rtx_remix_tools/dx/scripts/find_device_calls.py <game.exe>` | Device vtable call patterns and device pointer refs |
 | `python rtx_remix_tools/dx/scripts/find_vtable_calls.py <game.exe>` | D3DX constant table usage and D3D9 vtable calls |
 | `python rtx_remix_tools/dx/scripts/decode_vtx_decls.py <game.exe> --scan` | Vertex declaration formats (BLENDWEIGHT/BLENDINDICES -> skinning) |
+| `python rtx_remix_tools/dx/scripts/find_skinning.py <game.exe>` | Consolidated skinning analysis: skinned decls, bone palettes, blend states, suggested INI |
+| `python rtx_remix_tools/dx/scripts/find_blend_states.py <game.exe>` | D3DRS_VERTEXBLEND + INDEXEDVERTEXBLENDENABLE + WORLDMATRIX transforms |
 | `python rtx_remix_tools/dx/scripts/scan_d3d_region.py <game.exe> 0xSTART 0xEND` | Map all D3D9 vtable calls in a code region |
 
 ---

@@ -36,9 +36,12 @@ The VS constant register layout is defined in `src/shared/common/ffp_state.hpp` 
 int vs_reg_view_start_ = 0;    int vs_reg_view_end_ = 4;
 int vs_reg_proj_start_ = 4;    int vs_reg_proj_end_ = 8;
 int vs_reg_world_start_ = 16;  int vs_reg_world_end_ = 20;
-int vs_reg_bone_threshold_ = 20;
-int vs_regs_per_bone_ = 3;     int vs_bone_min_regs_ = 3;
+int vs_reg_bone_threshold_ = 20;   // first register treated as bone palette
+int vs_regs_per_bone_ = 3;        // 3 = 4x3 packed, 4 = full 4x4
+int vs_bone_min_regs_ = 3;        // min count to qualify as bone upload
 ```
+
+**Bone config:** Run `find_skinning.py` to determine bone start register and upload pattern. Some games upload all bones at once; others upload in groups until hitting a max (e.g., groups of 15, max 75). If grouped, lower `vs_bone_min_regs_`. If bone uploads overlap with non-bone constants, raise `vs_reg_bone_threshold_`.
 
 Other game-specific INI settings:
 - `[FFP] AlbedoStage=0` -- which texture stage holds the diffuse/albedo
@@ -61,6 +64,8 @@ python rtx_remix_tools/dx/scripts/find_render_states.py "<game.exe>"
 python rtx_remix_tools/dx/scripts/find_texture_ops.py "<game.exe>"
 python rtx_remix_tools/dx/scripts/find_transforms.py "<game.exe>"
 python rtx_remix_tools/dx/scripts/classify_draws.py "<game.exe>"
+python rtx_remix_tools/dx/scripts/find_skinning.py "<game.exe>"
+python rtx_remix_tools/dx/scripts/find_blend_states.py "<game.exe>"
 ```
 
 Scripts are fast first-pass scanners -- follow up with `retools` and `livetools`.

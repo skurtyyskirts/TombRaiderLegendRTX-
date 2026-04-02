@@ -87,6 +87,10 @@ python rtx_remix_tools/dx/scripts/find_ps_constants.py "<game.exe>"
 python rtx_remix_tools/dx/scripts/decode_vtx_decls.py "<game.exe>" --scan
 python rtx_remix_tools/dx/scripts/decode_fvf.py "<game.exe>"
 
+# Skinning analysis (bone palettes, blend weights, suggested INI)
+python rtx_remix_tools/dx/scripts/find_skinning.py "<game.exe>"
+python rtx_remix_tools/dx/scripts/find_blend_states.py "<game.exe>"
+
 # Render state and texture pipeline
 python rtx_remix_tools/dx/scripts/find_render_states.py "<game.exe>"
 python rtx_remix_tools/dx/scripts/find_texture_ops.py "<game.exe>"
@@ -200,11 +204,15 @@ int vs_reg_proj_end_ = 8;
 int vs_reg_world_start_ = 16;
 int vs_reg_world_end_ = 20;
 int vs_reg_bone_threshold_ = 20;  // only matters when [Skinning] Enabled=1
-int vs_regs_per_bone_ = 3;
-int vs_bone_min_regs_ = 3;
+int vs_regs_per_bone_ = 3;        // 3 = 4x3 packed bones (most common), 4 = full 4x4
+int vs_bone_min_regs_ = 3;        // minimum register count to qualify as bone upload
 ```
 
 Each matrix occupies 4 consecutive vec4 registers (= 16 floats). After changing defaults, rebuild with `build.bat`.
+
+### Bone Configuration for Skinning
+
+Before enabling skinning, run `find_skinning.py` to determine the bone start register (`vs_reg_bone_threshold_`) and upload pattern. Some games upload all bones in one call; others upload in groups until hitting a max (e.g., groups of 15, max 75). If the game uses grouped uploads, lower `vs_bone_min_regs_` so the proxy doesn't reject the smaller batches. If bone uploads overlap with non-bone constants, raise `vs_reg_bone_threshold_`.
 
 ## INI Config (`remix-comp-proxy.ini`)
 
@@ -219,6 +227,7 @@ AlbedoStage=0
 [Skinning]
 Enabled=0
 ; Only set to 1 after rigid FFP works correctly.
+; Run find_skinning.py to determine bone register layout before enabling.
 
 [Diagnostics]
 Enabled=1

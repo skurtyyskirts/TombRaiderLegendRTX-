@@ -54,6 +54,8 @@ Under `rtx_remix_tools/dx/scripts/`. Use BEFORE retools for D3D9 questions. Run 
 - `find_shader_bytecode.py $B` — embedded shader bytecode extraction
 - `classify_draws.py $B` — draw call classification (FFP/shader/hybrid)
 - `find_matrix_registers.py $B` — identify View/Proj/World matrix registers (CTAB + frequency)
+- `find_skinning.py $B` — consolidated skinning analysis (decls, bone palettes, blend states, INI suggestion)
+- `find_blend_states.py $B` — D3DRS_VERTEXBLEND / INDEXEDVERTEXBLENDENABLE + WORLDMATRIX transforms
 - `scan_d3d_region.py $B 0xSTART 0xEND` — D3D calls in code region
 
 ## dx9tracer
