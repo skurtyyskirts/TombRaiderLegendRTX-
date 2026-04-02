@@ -37,7 +37,7 @@ Everything else in `retools`. Tell it WHAT you need, not HOW. D3D9-specific ques
 
 ## DX analysis scripts (main agent, fast first-pass)
 
-Under `rtx_remix_tools/dx/scripts/`. Use BEFORE retools for D3D9 questions.
+Under `rtx_remix_tools/dx/scripts/`. Use BEFORE retools for D3D9 questions. Run as `python rtx_remix_tools/dx/scripts/<script> <args>`.
 
 - `find_d3d_calls.py $B` — D3D9/D3DX imports + call sites
 - `find_vs_constants.py $B` — SetVertexShaderConstantF sites with register/count
