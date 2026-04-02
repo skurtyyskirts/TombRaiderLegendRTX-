@@ -31,6 +31,7 @@ CLAUDE.md lists allowlisted fast commands (run directly) and the general delegat
 | dx9tracer offline analysis | `static-analyzer` subagent | |
 | Subsequent Ghidra decompile | `static-analyzer` subagent | Fast: JVM ~3s + decompile <1s |
 | sigdb scan / build | `static-analyzer` subagent | scan 1-3 min, build 1-5 min |
+| Dataflow: constants + backward slice (`dataflow.py`) | Main agent | fast (<5s) |
 | KB updates from findings | `static-analyzer` writes kb.h | main agent may refine |
 
 ## Subagent Output
@@ -71,9 +72,26 @@ r2ghidra: better `__thiscall` recovery, low-level D3D. pyghidra: better library 
 4. When both return, all subsequent decompilations use `--types kb.h --project patches/MyGame`
 
 **"Disable culling in game.exe"**
-1. Spawn two static-analyzers (r2ghidra + pyghidra): find `SetRenderState` with `D3DRS_CULLMODE`, string search "cull"
-2. Tell user: "Launch the game — I'll patch culling live once I find addresses"
-3. Merge findings → `livetools mem write` to NOP cull-enable or force `D3DCULL_NONE`
+1. Spawn `static-analyzer` #1 (r2ghidra): find `SetRenderState` calls with `D3DRS_CULLMODE`, string search for "cull", xrefs --indirect to find vtable call sites. Uses `--backend pdg --types kb.h`. Writes to `findings_r2.md`.
+2. Spawn `static-analyzer` #2 (pyghidra): same search strategy but decompile with `pyghidra_backend.py decompile`. Writes to `findings.md`.
+3. Immediately tell the user: "Please launch the game — I'll need to attach with livetools to patch culling at runtime once I find the addresses"
+4. While waiting, run `dataflow.py --constants` on any known render functions to see what cull mode constants flow in (e.g., `eax = 0x2` = D3DCULL_CW)
+5. When both return, merge findings and use `livetools` to verify and patch: `mem write` to NOP the cull-enable instruction or force `D3DRS_CULLMODE` to `D3DCULL_NONE`
+
+**"What does function 0x401000 do?"**
+1. Spawn `static-analyzer`: decompile with `--types kb.h`, get callgraph --indirect, xrefs
+2. Run `dataflow.py 0x401000 --constants` inline — see what constants flow through
+3. Tell the user: "Static analysis is running. Want me to also trace this function live to see actual register values and call frequency?"
+4. If yes, attach with `livetools trace 0x401000 --count 20 --read`
+
+**"Find who writes to address 0x7A0000"**
+1. Spawn `static-analyzer`: `datarefs.py` for static references
+2. Ask user: "Is the game running? I can also set a `livetools memwatch` to catch runtime writes that static analysis might miss"
+3. Combine static xrefs with live write traces for complete picture
+
+**"Why does the game crash in d3d9.dll?"**
+1. Spawn `static-analyzer`: `dumpinfo.py diagnose`, `throwmap.py match`
+2. Tell the user: "Analyzing the crash dump. If you can reproduce the crash, launch the game and I'll attach to catch it live"
 
 ## Anti-Patterns
 

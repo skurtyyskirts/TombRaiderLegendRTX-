@@ -15,6 +15,8 @@ Run all tools from repo root via `python -m <module>`. **ALWAYS pass `--types pa
 - `python -m retools.context assemble $B $VA --project $P` — full analysis context
 - pipe through `python -m retools.context postprocess` — rename/annotate decompiler output
 - `python -m retools.readmem $B $VA $TYPE` — read typed PE data
+- `python -m retools.dataflow $B $VA --constants` — forward constant propagation
+- `python -m retools.dataflow $B $VA --slice TARGET_VA:REG` — backward register slice
 - `python -m retools.asi_patcher build spec.json` — build ASI patch DLL
 
 ## Delegate to `static-analyzer`

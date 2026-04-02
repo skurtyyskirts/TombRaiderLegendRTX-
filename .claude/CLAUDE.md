@@ -18,6 +18,7 @@ These directories are **templates** shared across all game projects. **NEVER mod
 **Never run static analysis tools directly.** Delegate to a `static-analyzer` subagent. Only exceptions — run these inline:
 - `sigdb.py identify` / `fingerprint` (single-function ID, <5s)
 - `context.py assemble` / `postprocess` (context gathering, <5s)
+- `dataflow.py --constants` / `--slice` (single-function analysis, <5s)
 - `readmem.py` (single typed read from PE, <5s)
 - `asi_patcher.py build` (build step, not analysis)
 - `pyghidra_backend.py status` (project existence check, <1s)
@@ -100,3 +101,4 @@ When working on any of the following — invoke the **`dx9-ffp-port` skill** imm
 - **Full tool syntax tables and caveats**: `.claude/references/tool-catalog.md` (read on demand, not auto-loaded)
 - **Subagent workflow and delegation rules**: @.claude/rules/subagent-workflow.md
 - **DX9 FFP proxy porting for RTX Remix**: `.claude/skills/dx9-ffp-port/SKILL.md` (invoke `dx9-ffp-port` skill, not auto-loaded)
+- **Frida-based dynamic analysis**: `/dynamic-analysis` skill
