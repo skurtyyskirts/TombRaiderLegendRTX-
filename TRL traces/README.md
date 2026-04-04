@@ -15,7 +15,7 @@ Full-frame D3D9 API traces captured with the [`graphics/directx/dx9/tracer/`](..
 | `trl_capture_broken_geo.jsonl` | Frame captured without sector patches (baseline, ~91K draw calls) |
 | `trl_capture_broken_geo_proxy.log` | Proxy log for the broken-geometry session |
 
-These captures predate the terrain rendering investigation. A near-vs-far frame diff (anchor geometry present vs. absent) has not yet been captured — that is the [next planned step](../TRL%20tests/WHITEBOARD.md).
+These captures predate the terrain rendering investigation. A near-vs-far frame diff (anchor geometry present vs. absent) has not yet been captured — that is the [next planned step](../docs/status/WHITEBOARD.md).
 
 ---
 

@@ -13,7 +13,7 @@ This project is an active reverse engineering effort to make Tomb Raider Legend 
 
 1. Clone the repo and run `python verify_install.py` — every check must pass before using any tool
 2. Run `pip install -r requirements.txt` for Python dependencies
-3. Read [`TRL tests/WHITEBOARD.md`](TRL%20tests/WHITEBOARD.md) for full project context
+3. Read [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md) for full project context
 4. Read [`patches/TombRaiderLegend/kb.h`](patches/TombRaiderLegend/kb.h) for accumulated address discoveries
 
 ---

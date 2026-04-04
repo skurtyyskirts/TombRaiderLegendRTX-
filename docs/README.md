@@ -4,6 +4,17 @@ Technical documentation for the TRL RTX Remix project, organized by type.
 
 ---
 
+## Status
+
+Live project tracking — updated at the end of each development phase.
+
+| File | Description |
+|------|-------------|
+| [`status/WHITEBOARD.md`](status/WHITEBOARD.md) | Live status: 22-layer culling map, build history narrative, decision tree, key addresses |
+| [`status/TEST_STATUS.md`](status/TEST_STATUS.md) | Build-by-build pass/fail table, what's done, what remains |
+
+---
+
 ## Research
 
 Deep-dive analysis reports and experiment logs.
@@ -31,6 +42,7 @@ Quick-lookup technical reference documents.
 
 | File | Description |
 |------|-------------|
+| [`TECHNICAL_BUILD_DOCUMENT.md`](reference/TECHNICAL_BUILD_DOCUMENT.md) | Complete technical specification: proxy design, VS register layout, game memory patches, build steps |
 | [`TRL-RTX-Remix-Index.md`](reference/TRL-RTX-Remix-Index.md) | Master index of all known addresses and symbols |
 | [`TRL-RTX-Remix-Definition-Book.md`](reference/TRL-RTX-Remix-Definition-Book.md) | Glossary of engine terms, Remix concepts, and project-specific definitions |
 | [`TRL-RTX-Remix-Rosetta-Stone.md`](reference/TRL-RTX-Remix-Rosetta-Stone.md) | Cross-reference: engine internals ↔ Remix concepts |
