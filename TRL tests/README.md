@@ -10,7 +10,7 @@ This directory contains every test build from the project, committed in order. E
 
 ## Current Status
 
-**Failing — anchor geometry disappears at distance.** All 22 identified culling layers have been addressed. The unexplored `TerrainDrawable (0x40ACF0)` render path is the prime suspect.
+**Failing — anchor geometry not submitted to renderer.** All known culling and visibility layers have been patched. All three light pipeline gates are re-enabled and confirmed safe (build 068). The anchor mesh geometry carrying Remix light hashes is not being submitted to `DrawIndexedPrimitive` at the camera positions tested.
 
 | Goal | Status |
 |------|--------|
@@ -21,10 +21,11 @@ This directory contains every test build from the project, committed in order. E
 | Backface / frustum / distance culling disabled | Done |
 | Sector / portal visibility disabled | Done |
 | Per-light culling gates disabled | Done |
+| SHORT4 → FLOAT3 VB expansion + fingerprint cache | Done |
 | **Both stage lights stable at all positions** | **Failing** |
 
-Last confirmed PASS: `build-019` (both lights visible, hashes stable).
-Latest build: `build-044` — all three render paths patched; terrain path remains unexplored.
+Last confirmed PASS: `build-019` (both lights visible, hashes stable).  
+Latest build: `build-068` — all light patches re-enabled; anchor geometry still not submitted.
 
 ---
 
@@ -94,6 +95,24 @@ Latest build: `build-044` — all three render paths patched; terrain path remai
 | [041](build-041-far-clip-stamp-same-pattern) | FAIL | Far clip stamped to 1e30f; same pattern as 039 |
 | [042](build-042-reparent-lights-wrong-mesh-fail) | FAIL | Lights re-parented to largest mesh — worse; mesh not always drawn |
 | [044](build-044-sector-proximity-nop-same-pattern) | FAIL | Camera-sector proximity filter NOPed; all 3 render paths patched; terrain path identified as prime suspect |
+
+---
+
+### Phase 5 — Proxy Improvements + Deep Culling (Builds 045–068)
+
+> Builds 048–063 not preserved.
+
+| Build | Result | Key Finding |
+|-------|--------|-------------|
+| [045](build-045-managed-pool-vb-flush-FAIL-lights-missing) | FAIL | D3DPOOL_MANAGED VBs + per-frame flush; SHORT4 hash debug stable; blank amber render (flush too aggressive) |
+| [046](build-046-null-vs-all-fingerprint-FAIL-rendering-broken) | FAIL | Content fingerprint cache introduced; nulling VS for FLOAT3 draws breaks view-space geometry |
+| [047](build-047-strip-positions-hash-FAIL-hash-collision) | FAIL | Removing `positions` from hash rule causes catastrophic collision — positions are required |
+| 048–063 | — | Not preserved |
+| [064](build-064-hash-stability-FAIL-lights-missing) | FAIL | Hash debug invalid (load timing); Phase 1 timing bug identified (15s insufficient) |
+| [065](build-065-hash-stability-FAIL-lights-missing) | FAIL | Hash stable; ~650 draws per frame; anchor meshes absent — fourth render path suspected |
+| [066](build-066-theory1-draw-cache-disabled-FAIL-lights-missing) | FAIL | Theory 1: disabling draw cache has no effect |
+| [067](build-067-theory2-vp-inverse-no-threshold-FAIL-lights-missing) | FAIL | Theory 2: removing VP inverse epsilon has no effect |
+| [068](build-068-theory3-light-patches-reenabled-FAIL-lights-missing) | FAIL | Theory 3: light patches re-enabled — **no crash**; all 20+ patches confirmed; lights still absent |
 
 \* False positive — Lara didn't move or wrong screenshots evaluated.
 

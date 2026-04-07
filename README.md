@@ -2,7 +2,7 @@
 
 Port Tomb Raider Legend (2006) to NVIDIA RTX Remix for full path-traced lighting, stable geometry hashes, and complete scene visibility.
 
-**44 builds completed. All major culling layers patched. `TerrainDrawable (0x40ACF0)` is the remaining prime suspect.**
+**68 builds completed. All known culling layers patched. Anchor geometry not submitted — mesh streaming / sector traversal is the remaining blocker.**
 
 ---
 
@@ -27,12 +27,14 @@ Remix also anchors scene lights to geometry draw calls. When TRL's culling syste
 | Backface / frustum / distance culling disabled | Done |
 | Sector / portal visibility disabled | Done |
 | Per-light culling gates disabled | Done |
+| SHORT4 → FLOAT3 VB expansion path | Done |
+| Content fingerprint VB cache | Done |
 | **Both stage lights stable at all positions** | **In progress** |
 
 **Last confirmed PASS:** `build-019` — both lights visible, hashes stable.  
-**Latest:** `build-044` — all three render paths patched; anchor geometry still disappears at distance.
+**Latest:** `build-068` — all light pipeline gates re-enabled (no crash); anchor geometry still not submitted.
 
-Full status: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md) — 22-layer culling map, build history, decision tree, key addresses.
+Full status: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md) — culling layer map, build history, decision tree, key addresses.
 
 ---
 
@@ -100,15 +102,24 @@ c48+:    Skinning bone matrices (3 regs/bone)
 
 | Address | Patch | Effect |
 |---------|-------|--------|
-| `0x407150` | `RET` | Bypasses the per-object frustum cull function |
-| `0x4070F0` + 10 sites | NOP 6-byte branches | Disables all scene-traversal cull exits |
+| `0x407150` (+ 11 internal sites) | NOP 6-byte branches | Disables all scene-traversal cull exits |
 | `0x46C194`, `0x46C19D` | NOP JE/JNE | Defeats sector/portal visibility gates (65× draw count increase) |
+| `0x46B85A` | NOP JNE | Camera-sector proximity filter (RenderSector) |
 | `0x60B050` | `mov al,1; ret 4` | `Light_VisibilityTest` always returns TRUE |
+| `0x60CE20`, `0x60CDE2` | NOP | Light frustum 6-plane test + broad visibility check |
+| `0x60E3B1` | NOP JE | RenderLights gate (sector light count = 0 skip) |
+| `0x603AE6` | NOP MOV | Sector light count clear per frame |
+| `0xEC6337` | NOP JNZ | Sector light count gate in `FUN_00EC62A0` |
 | `0xEFDD64` | `-1e30f` | Frustum distance threshold |
 | `0xF2A0D4/D8/DC` | `D3DCULL_NONE` | Cull mode globals |
 | `0x10FC910` | `1e30f` | Far clip distance |
+| `0xEDF9E3` | Trampoline | Null-check guard (prevents crash on uninitialized pointer) |
+| Terrain cull gate | NOP | `TerrainDrawable` distance/sector culling |
+| `MeshSubmit_VisibilityGate` | `return 0` | Mesh-level visibility pre-check always passes |
+| Stream unload gate | NOP | Prevents mesh stream eviction on camera movement |
+| Mesh eviction (3 sites) | NOP | `SectorEviction` × 2 + `ObjectTracker_Evict` |
 
-Full patch list: [`docs/status/WHITEBOARD.md — Culling Layers`](docs/status/WHITEBOARD.md#culling-layers--complete-map).
+Full patch list: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md).
 
 ---
 
@@ -127,6 +138,8 @@ TRL tests/
 ```
 
 PASS builds include `miracle` in the folder name. Every build — pass or fail — is pushed immediately.
+
+> **Note:** Builds 003–015, 034, 043, and 048–063 were not preserved in the archive.
 
 ---
 

@@ -1,7 +1,7 @@
 # TRL RTX Remix — Results Whiteboard
 
-**Last updated:** 2026-03-27 (session 4)
-**Builds completed:** 001-044 (003-015, 034, 043 not preserved)
+**Last updated:** 2026-04-07
+**Builds completed:** 001-068 (003-015, 034, 043, 048-063 not preserved)
 **Goal:** Get Tomb Raider Legend rendering correctly with RTX Remix — stable hashes, no culling, anchored lights
 
 ---
@@ -22,9 +22,12 @@
 | Light frustum rejection disabled | DONE | NOP at 0x60CE20 |
 | Light visibility pre-check disabled | DONE | `Light_VisibilityTest` at 0x60B050 → `mov al,1; ret 4` (build 031) |
 | Sector light count gate disabled | DONE | NOP at 0xEC6337 (build 035) |
-| GREEN light stable at all positions | **FAILING** | Build 038 confirmed: both stage lights vanish at distance; "green at distance" in 039/041 is positional, not stable |
-| RED light stable at all positions | **FAILING** | Both lights absent at distance; "red" at distance was fallback light (build 038 diagnostic) |
-| Remix light anchors hold on movement | **FAILING** | Root cause reframed (build 038): anchor geometry not submitted at distance — geometry culling, not light culling |
+| SHORT4 → FLOAT3 VB expansion path | DONE | D3DPOOL_MANAGED + content fingerprint cache (builds 045-046) |
+| `positions` required in asset hash | CONFIRMED | Build 047 proved removing positions causes catastrophic collision |
+| All light pipeline gates disabled | DONE | `Light_VisibilityTest`, sector count gate, RenderLights gate — re-enabled build 068, confirmed no crash |
+| GREEN light stable at all positions | **FAILING** | Anchor geometry not submitted — not a light culling issue |
+| RED light stable at all positions | **FAILING** | Same root cause — anchor mesh draw calls absent at tested camera positions |
+| Remix light anchors hold on movement | **FAILING** | Anchor geometry never submitted; all 20+ culling patches active and confirmed |
 
 ---
 
@@ -77,7 +80,15 @@ Every culling mechanism discovered and its patch status:
 | 19. Additional SceneTraversal exits (4x) | 0x4071CE, 0x407976, 0x407B06, 0x407ABC | Object disable flag (A+B), far clip, draw distance fade-out inside 0x407150 | Yes — all 4 NOPed | 040 |
 | 20. Far clip distance global | 0x10FC910 | g_farClipDistance stamped to 1e30f per BeginScene | Yes — stamped | 041 |
 | 21. Camera-sector proximity filter | 0x46B85A | JNE in RenderSector skipping objects without flag 0x200000 when not in camera sector | Yes — NOPed | 044 |
-| 22. Terrain rendering path | TerrainDrawable (0x40ACF0) / TERRAIN_DrawUnits | Separate draw path for terrain geometry, own culling | **UNEXPLORED — prime suspect** | — |
+| 22. Terrain rendering path | TerrainDrawable (0x40ACF0) / TERRAIN_DrawUnits | Separate draw path for terrain geometry, own culling | Yes — terrain cull gate NOPed | 045-063 |
+| 23. Null-check guard | 0xEDF9E3 | Crashes on uninitialized pointer during extended scene loads | Yes — trampoline patched | 045-063 |
+| 24. ProcessPendingRemovals stale field | FUN_00ProcessPendingRemovals | Stale `field_48` causes crash at 0xEE88AD | Yes — patched | 045-063 |
+| 25. MeshSubmit visibility gate | MeshSubmit_VisibilityGate | Pre-DIP visibility check — rejects meshes before draw | Yes — patched to return 0 | 045-063 |
+| 26. Sector already-rendered skip | Unknown | Skips sector objects already flagged as rendered this frame | Yes — NOPed | 045-063 |
+| 27. Post-sector bitmask/distance culls | Unknown | Distance + bitmask checks after sector traversal | Yes — NOPed | 045-063 |
+| 28. Stream unload gate | 0x415C51 | Unloads mesh streams on camera movement | Yes — NOPed | 045-063 |
+| 29. Mesh eviction | SectorEviction (×2) + ObjectTracker_Evict | Removes meshes from scene tracking on eviction | Yes — all 3 NOPed | 045-063 |
+| 30. Post-sector loop | Unknown | Secondary loop after main sector pass | Yes — enabled | 045-063 |
 
 ---
 
@@ -142,18 +153,37 @@ Every culling mechanism discovered and its patch status:
 
 **Conclusion:** All identified culling paths in geometry submission (11 NOPs in 0x407150, sector visibility, proximity filter, far clip) exhausted. Anchor geometry still disappears. Terrain rendering path (TerrainDrawable / TERRAIN_DrawUnits) is the unexplored prime suspect.
 
+### Phase 5: Proxy Improvements + Deep Culling (Builds 045–068)
+
+*Builds 048–063 not preserved.*
+
+| Build | Result | What We Tested | What We Learned |
+|-------|--------|----------------|-----------------|
+| 045 | FAIL | D3DPOOL_MANAGED VBs + per-frame VB flush | Hash debug: SHORT4 hashes stable. Blank render: per-frame flush too aggressive (512 VB creates/frame). D3DPOOL_MANAGED is correct; flush strategy wrong |
+| 046 | FAIL | Content fingerprint cache + null VS for ALL draws | Nulling VS for FLOAT3 view-space draws breaks rendering — view-space positions render at extreme scale. Fingerprint cache is correct and kept |
+| 047 | FAIL | Remove `positions` from asset hash | Catastrophic hash collision — all geometry same hash. `positions` MUST be in the hash; TRL meshes share index/texcoord/descriptor patterns |
+| 048-063 | — | Not preserved | Multiple culling layers patched: terrain cull gate, null-check trampoline, ProcessPendingRemovals fix, MeshSubmit_VisibilityGate, stream unload gate, mesh eviction NOPs, post-sector loop enabled |
+| 064 | FAIL | Hash stability test (camera-only pan) | Phase 1 invalid (load timing bug — 15s wait insufficient for Remix+Peru). Phase 2: ~244-245 draws, no lights. Patch integrity confirmed |
+| 065 | FAIL | Hash stability test (same, fixed panning) | Phase 1 stable. Phase 2: ~650-657 draws, no lights. All 17+ patches confirmed active. Light patches intentionally disabled (crash risk at 0xEE88AD) |
+| 066 | FAIL | Theory 1: disable draw cache (`DRAW_CACHE_ENABLED 0`) | No effect — draw cache only replays 3 draws; stale pointer concern was unfounded |
+| 067 | FAIL | Theory 2: remove VP inverse epsilon threshold | No effect — VP changes on camera pan are large enough to always trigger recalculation |
+| 068 | FAIL | Theory 3: re-enable all 3 light patches (LightVisTest + sector gate + RenderLights gate) | **No crash** — ProcessPendingRemovals fix resolved the 0xEE88AD crash. All 20+ patches active and confirmed. Lights still absent — upstream geometry not submitted |
+
+**Conclusion (build 068):** All three light pipeline gates are re-enabled and safe. The problem is definitively upstream: the mesh geometry that Remix lights anchor to is never submitted as a `DrawIndexedPrimitive` call at the tested camera positions. This is not a light culling issue — it is a geometry submission issue.
+
 ---
 
 ## What Has NOT Been Tried
 
 | Idea | Why It Matters | Difficulty |
 |------|----------------|------------|
-| Investigate TerrainDrawable (0x40ACF0) / TERRAIN_DrawUnits | Prime suspect: separate terrain render path with own culling; anchor meshes may be terrain | Medium — static analysis needed |
-| dx9tracer frame capture at near vs far position | Definitively identifies which draw calls disappear; would show if anchor hashes are absent vs just invisible | Medium — setup dx9tracer |
-| Find Lara's character mesh hash | Her body is always drawn; anchoring lights to her hash would guarantee visibility at all positions | Easy — hash debug screenshots |
-| Find and NOP terrain culling path | TerrainDrawable likely has distance/sector culling separate from SceneTraversal | Hard — need to find and understand the path |
-| Patch LOD alpha fade at 0x446580 | 10 callers, may fade geometry at distance | Medium — verify if affects anything post-sector-patch |
-| Investigate 0x41F96A object visibility check | Uses same threshold, different code path | Low priority |
+| dx9tracer frame diff: near stage vs far | Definitively shows which draw calls (and which hashes) disappear — confirms whether anchor mesh is ever submitted | Medium |
+| Livetools memory search for anchor hash values | Determines if anchor mesh objects exist in the scene graph at all — distinguishes "not loaded" from "not drawn" | Easy |
+| Trace draw call backtraces near stage vs far | Identifies which submission path handles the missing geometry (SceneTraversal vs other) | Medium |
+| Force sector mesh loading | Stamp all sector enable flags; trace which sectors contain anchor meshes | Medium |
+| Anchor to Lara's always-drawn mesh | Find Lara's body hash; anchor lights to her — she's always rendered | Easy |
+| Investigate portal/PVS traversal | Sector graph may exclude anchor mesh sectors when camera is rotated; individual cull NOPs are downstream | Hard |
+| Patch LOD alpha fade at 0x446580 | 10 callers, may fade geometry at distance | Medium |
 
 ---
 
@@ -235,31 +265,40 @@ FUN_006033d0 / FUN_00602aa0 ← IRRELEVANT (per build 038 root cause reframe)
 
 ## Immediate Next Step
 
-**Investigate the terrain rendering path.** All identified geometry culling paths in SceneTraversal (0x407150), RenderSector (0x46B7D0), and the moveable object loop (0x40E2C0) have been patched. Anchor geometry still disappears. The unexplored path is TerrainDrawable (0x40ACF0) / TERRAIN_DrawUnits.
+**Determine if anchor geometry is ever in memory.** All 30 identified culling layers are patched and active. Build 068 confirmed 20+ patches active simultaneously with no crash. Yet the anchor mesh draw calls are absent. The question is whether the geometry is:
+
+1. **In memory but not drawn** — a submission path we haven't patched
+2. **Never loaded** — a streaming/sector loading issue; patches prevent eviction but cannot force initial load
 
 Two parallel tracks:
-1. **Static analysis**: Decompile TerrainDrawable (0x40ACF0) and TERRAIN_DrawUnits — find the culling condition and NOP it. Also decompile the sector iteration loop at 0x46C180 to understand per-sector object lists.
-2. **dx9tracer frame capture**: Capture one frame near stage and one frame far from stage. Diff the draw call lists to identify exactly which hashes disappear — this definitively shows whether the anchor meshes are terrain or instance geometry.
+1. **Livetools memory search**: Search live process memory for anchor hash patterns (`mesh_5601C7C6...` etc.) to determine if the objects exist in the scene graph at all near vs far positions.
+2. **dx9tracer frame diff**: Capture one frame near stage, one frame far. Diff the draw call list to identify exactly which hashes disappear — proves whether the geometry is being submitted at all.
 
-**What was tried and ruled out (since build 035):**
-- Both stage lights fully absent at distance (build 038) — confirmed geometry, not light culling
-- All 11 safe exits in SceneTraversal_CullAndSubmit NOPed (build 040) — not the issue
+**What was tried and ruled out (builds 038-068):**
+- All 3 light pipeline gates unblocked (build 068) — not the issue; geometry never reaches light system
+- All 11 exits in SceneTraversal_CullAndSubmit NOPed (build 040) — not the issue
 - Far clip stamp to 1e30f (build 041) — no effect
 - Camera-sector proximity filter NOPed (build 044) — no effect
-- Re-parenting lights to large mesh (build 042) — made things worse; mesh not always drawn
-- RenderLights gate + sector light count clear NOPed (build 037) — irrelevant (light functions not the issue)
+- Terrain cull gate NOPed (builds 045-063) — no effect
+- MeshSubmit_VisibilityGate → return 0 (builds 045-063) — no effect
+- Stream unload gate + mesh eviction NOPed (builds 045-063) — prevents eviction; geometry still absent
+- Draw cache disabled (build 066) — no effect
+- VP inverse epsilon removed (build 067) — no effect
 
 ---
 
 ## Decision Tree for Next Failure
 
 ```
-Both lights gone at distance (confirmed pattern builds 038-044)
-├── dx9tracer diff: which hashes disappear?
-│   ├── Anchor hashes absent → geometry not submitted
-│   │   ├── Hashes match terrain signature → investigate TerrainDrawable (0x40ACF0)
-│   │   └── Hashes match instance signature → look at sector object list population
-│   └── Anchor hashes present → Remix side issue (anchor config or light range)
-├── Decompile TerrainDrawable (0x40ACF0) → find distance/sector culling → NOP it
-└── Fallback: find Lara's always-drawn mesh hash → anchor lights to her body
+Both lights gone (confirmed builds 038-068, 20+ patches active)
+├── Livetools memory search: do anchor mesh objects exist in scene graph?
+│   ├── NOT FOUND near stage → geometry never loaded into memory
+│   │   └── Investigate sector/stream loading path — patches prevent eviction but not initial load
+│   └── FOUND → geometry exists but submission path not covered
+│       ├── dx9tracer diff: capture near + far, diff draw call lists
+│       │   ├── Anchor draws absent at far → find the submission path (4th render path?)
+│       │   └── Anchor draws present at far → Remix side issue (anchor config, light range)
+│       └── Trace draw backtraces: identify which path handles anchor mesh at near position
+├── Fallback: anchor lights to Lara's body mesh (always rendered, always in camera sector)
+└── Fallback: Option B — draw call replay in proxy (record anchor DIP calls, replay every frame)
 ```
