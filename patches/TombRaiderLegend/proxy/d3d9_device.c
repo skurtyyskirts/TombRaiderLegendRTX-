@@ -372,6 +372,52 @@ enum {
     DEVICE_VTABLE_SIZE = 119
 };
 
+/* ---- Draw Call Replay Cache ----
+ *
+ * Captures unique draw call fingerprints during the first N frames (while all
+ * geometry is visible near the stage). On subsequent frames, any fingerprint
+ * NOT resubmitted by the game is replayed by the proxy, keeping Remix's
+ * anti-culling alive for anchor meshes that the game culls at distance.
+ *
+ * Fingerprint = VB pointer + IB pointer + texture[0] pointer.
+ * Stored state = everything needed to replay: VS constants, declaration,
+ * shaders, stream source, textures, primitive params.
+ */
+#define PINNED_DRAW_MAX     512     /* max unique draws to cache */
+#define PINNED_CAPTURE_FRAMES 120   /* capture during first 120 frames (~2 sec) */
+#define PINNED_REPLAY_INTERVAL 60   /* replay missing draws every 60 frames */
+
+typedef struct PinnedDraw {
+    /* Fingerprint for dedup */
+    void *fpVB;             /* vertex buffer pointer */
+    void *fpIB;             /* index buffer pointer */
+    void *fpTex0;           /* texture stage 0 */
+
+    /* Draw call parameters */
+    unsigned int primType;
+    int baseVertexIndex;
+    unsigned int minVertexIndex;
+    unsigned int numVertices;
+    unsigned int startIndex;
+    unsigned int primCount;
+
+    /* State needed for replay */
+    void *vertexShader;     /* AddRef'd */
+    void *pixelShader;      /* AddRef'd */
+    void *vertexDecl;       /* AddRef'd */
+    void *textures[4];      /* stages 0-3, AddRef'd */
+    void *vertexBuffer;     /* stream 0 VB, AddRef'd */
+    unsigned int vbOffset;
+    unsigned int vbStride;
+    void *indexBuffer;      /* AddRef'd */
+
+    /* Transform state: cached WVP (c0-c3) for this draw */
+    float wvpConst[16];     /* VS constants c0-c3 at capture time */
+
+    int active;             /* 1 = slot in use */
+    int submittedThisFrame; /* reset each frame, set when game submits matching draw */
+} PinnedDraw;
+
 /* ---- WrappedDevice ---- */
 
 typedef struct WrappedDevice {
@@ -479,6 +525,11 @@ typedef struct WrappedDevice {
     void *strippedDeclOrig[64];   /* original declaration pointer (lookup key) */
     void *strippedDeclFixed[64];  /* modified declaration with NORMAL removed */
     int strippedDeclCount;
+
+    /* Draw call replay cache — keeps anchor geometry alive for Remix */
+    PinnedDraw pinnedDraws[PINNED_DRAW_MAX];
+    int pinnedDrawCount;
+    int pinnedCaptureComplete;  /* 1 after capture window closes */
 } WrappedDevice;
 
 #define REAL(self) (((WrappedDevice*)(self))->pReal)
@@ -672,6 +723,224 @@ static void diag_log_matrix(const char *name, const float *m) {
     log_floats_dec("  row1: ", (float*)&m[4], 4);
     log_floats_dec("  row2: ", (float*)&m[8], 4);
     log_floats_dec("  row3: ", (float*)&m[12], 4);
+}
+
+/* ---- Pinned Draw Helpers ---- */
+
+static void com_addref(void *p) {
+    if (p) { typedef unsigned long (__stdcall *FN)(void*); ((FN)(*(void***)p)[1])(p); }
+}
+static void com_release(void *p) {
+    if (p) { typedef unsigned long (__stdcall *FN)(void*); ((FN)(*(void***)p)[2])(p); }
+}
+
+/*
+ * Capture a draw call into the pinned cache during the capture window.
+ * Deduplicates by VB+IB+tex0 fingerprint. AddRefs all COM objects.
+ */
+static void PinnedDraw_Capture(WrappedDevice *self) {
+    void *fpVB, *fpIB, *fpTex0;
+    int i;
+    PinnedDraw *pd;
+
+    if (self->pinnedCaptureComplete || self->pinnedDrawCount >= PINNED_DRAW_MAX)
+        return;
+
+    fpVB   = self->streamVB[0];
+    fpTex0 = self->curTexture[0];
+
+    /* Get current index buffer */
+    {
+        typedef int (__stdcall *FN_GetIndices)(void*, void**);
+        void **vt = RealVtbl(self);
+        fpIB = NULL;
+        ((FN_GetIndices)vt[SLOT_GetIndices])(self->pReal, &fpIB);
+        if (fpIB) com_release(fpIB); /* GetIndices AddRefs, we just need the pointer */
+    }
+
+    /* Skip draws without geometry (no VB or no IB) */
+    if (!fpVB) return;
+
+    /* Dedup: check if this fingerprint already exists */
+    for (i = 0; i < self->pinnedDrawCount; i++) {
+        if (self->pinnedDraws[i].fpVB == fpVB &&
+            self->pinnedDraws[i].fpIB == fpIB &&
+            self->pinnedDraws[i].fpTex0 == fpTex0)
+        {
+            return; /* already captured */
+        }
+    }
+
+    /* Capture new pinned draw */
+    pd = &self->pinnedDraws[self->pinnedDrawCount];
+    pd->fpVB = fpVB;
+    pd->fpIB = fpIB;
+    pd->fpTex0 = fpTex0;
+    pd->active = 1;
+    pd->submittedThisFrame = 1;
+
+    /* Save VS constants c0-c3 (WVP matrix at capture time) */
+    for (i = 0; i < 16; i++) pd->wvpConst[i] = self->vsConst[i];
+
+    /* AddRef and save COM objects */
+    pd->vertexShader = self->lastVS;   com_addref(pd->vertexShader);
+    pd->pixelShader  = self->lastPS;   com_addref(pd->pixelShader);
+    pd->vertexDecl   = self->lastDecl; com_addref(pd->vertexDecl);
+    pd->vertexBuffer = fpVB;           com_addref(pd->vertexBuffer);
+    pd->vbOffset     = self->streamOffset[0];
+    pd->vbStride     = self->streamStride[0];
+    { /* Get and AddRef IB */
+        typedef int (__stdcall *FN_GetIndices)(void*, void**);
+        void **vt = RealVtbl(self);
+        pd->indexBuffer = NULL;
+        ((FN_GetIndices)vt[SLOT_GetIndices])(self->pReal, &pd->indexBuffer);
+        /* GetIndices already AddRef'd */
+    }
+    { int t; for (t = 0; t < 4; t++) { pd->textures[t] = self->curTexture[t]; com_addref(pd->textures[t]); } }
+
+    self->pinnedDrawCount++;
+}
+
+/*
+ * Mark a draw as submitted this frame (by fingerprint match).
+ */
+static void PinnedDraw_MarkSubmitted(WrappedDevice *self) {
+    void *fpVB  = self->streamVB[0];
+    void *fpTex0 = self->curTexture[0];
+    void *fpIB = NULL;
+    int i;
+
+    if (self->pinnedDrawCount == 0) return;
+
+    {
+        typedef int (__stdcall *FN_GetIndices)(void*, void**);
+        void **vt = RealVtbl(self);
+        ((FN_GetIndices)vt[SLOT_GetIndices])(self->pReal, &fpIB);
+        if (fpIB) com_release(fpIB);
+    }
+
+    for (i = 0; i < self->pinnedDrawCount; i++) {
+        PinnedDraw *pd = &self->pinnedDraws[i];
+        if (pd->active && pd->fpVB == fpVB && pd->fpIB == fpIB && pd->fpTex0 == fpTex0) {
+            pd->submittedThisFrame = 1;
+            return;
+        }
+    }
+}
+
+/*
+ * Replay all pinned draws NOT submitted this frame.
+ * Called from WD_Present before the real Present.
+ * Restores full D3D9 state for each draw, then restores original state after.
+ */
+static void PinnedDraw_ReplayMissing(WrappedDevice *self) {
+    typedef int (__stdcall *FN_DIP)(void*, unsigned int, int, unsigned int, unsigned int, unsigned int, unsigned int);
+    typedef int (__stdcall *FN_SetVS)(void*, void*);
+    typedef int (__stdcall *FN_SetPS)(void*, void*);
+    typedef int (__stdcall *FN_SetDecl)(void*, void*);
+    typedef int (__stdcall *FN_SetTex)(void*, unsigned int, void*);
+    typedef int (__stdcall *FN_SetSS)(void*, unsigned int, void*, unsigned int, unsigned int);
+    typedef int (__stdcall *FN_SetIndices)(void*, void*);
+    typedef int (__stdcall *FN_SetVSCF)(void*, unsigned int, const float*, unsigned int);
+    typedef int (__stdcall *FN_SetTransform)(void*, unsigned int, float*);
+    typedef int (__stdcall *FN_BeginScene)(void*);
+    typedef int (__stdcall *FN_EndScene)(void*);
+
+    void **vt = RealVtbl(self);
+    int i, replayed = 0;
+
+    if (self->pinnedDrawCount == 0) return;
+
+    /* Begin a scene for the replay draws */
+    ((FN_BeginScene)vt[SLOT_BeginScene])(self->pReal);
+
+    for (i = 0; i < self->pinnedDrawCount; i++) {
+        PinnedDraw *pd = &self->pinnedDraws[i];
+        if (!pd->active || pd->submittedThisFrame)
+            continue;
+
+        /* Restore state for this draw */
+        if (pd->vertexDecl)
+            ((FN_SetDecl)vt[SLOT_SetVertexDeclaration])(self->pReal, pd->vertexDecl);
+        if (pd->vertexShader)
+            ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, pd->vertexShader);
+        if (pd->pixelShader)
+            ((FN_SetPS)vt[SLOT_SetPixelShader])(self->pReal, pd->pixelShader);
+        if (pd->vertexBuffer)
+            ((FN_SetSS)vt[SLOT_SetStreamSource])(self->pReal, 0, pd->vertexBuffer, pd->vbOffset, pd->vbStride);
+        if (pd->indexBuffer)
+            ((FN_SetIndices)vt[SLOT_SetIndices])(self->pReal, pd->indexBuffer);
+        { int t; for (t = 0; t < 4; t++)
+            ((FN_SetTex)vt[SLOT_SetTexture])(self->pReal, t, pd->textures[t]); }
+
+        /* Restore VS constants c0-c3 (WVP from capture time) */
+        ((FN_SetVSCF)vt[SLOT_SetVertexShaderConstantF])(self->pReal, 0, pd->wvpConst, 4);
+
+        /* Apply transform overrides using cached WVP */
+        {
+            float wvp_row[16], view[16], proj[16], vp[16], world[16];
+            const float *gameView = (const float *)TRL_VIEW_MATRIX_ADDR;
+            const float *gameProj = (const float *)TRL_PROJ_MATRIX_ADDR;
+            static float identity[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+            int j;
+
+            for (j = 0; j < 16; j++) { view[j] = gameView[j]; proj[j] = gameProj[j]; }
+            mat4_transpose(wvp_row, pd->wvpConst);
+            mat4_multiply(vp, view, proj);
+
+            if (self->vpInverseValid) {
+                mat4_multiply(world, wvp_row, self->cachedVPInverse);
+            } else {
+                for (j = 0; j < 16; j++) world[j] = identity[j];
+            }
+
+            ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_WORLD, world);
+            ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_VIEW, view);
+            ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_PROJECTION, proj);
+        }
+
+        /* Issue the draw */
+        ((FN_DIP)vt[SLOT_DrawIndexedPrimitive])(self->pReal,
+            pd->primType, pd->baseVertexIndex, pd->minVertexIndex,
+            pd->numVertices, pd->startIndex, pd->primCount);
+        replayed++;
+    }
+
+    ((FN_EndScene)vt[SLOT_EndScene])(self->pReal);
+
+    if (replayed > 0) {
+        log_str("  PinnedDraw: replayed ");
+        log_int("", replayed);
+        log_str(" cached draws\r\n");
+    }
+}
+
+/*
+ * Reset per-frame tracking. Called at frame start.
+ */
+static void PinnedDraw_FrameReset(WrappedDevice *self) {
+    int i;
+    for (i = 0; i < self->pinnedDrawCount; i++)
+        self->pinnedDraws[i].submittedThisFrame = 0;
+}
+
+/*
+ * Release all pinned draw COM references. Called on device release.
+ */
+static void PinnedDraw_ReleaseAll(WrappedDevice *self) {
+    int i;
+    for (i = 0; i < self->pinnedDrawCount; i++) {
+        PinnedDraw *pd = &self->pinnedDraws[i];
+        if (!pd->active) continue;
+        com_release(pd->vertexShader);
+        com_release(pd->pixelShader);
+        com_release(pd->vertexDecl);
+        com_release(pd->vertexBuffer);
+        com_release(pd->indexBuffer);
+        { int t; for (t = 0; t < 4; t++) com_release(pd->textures[t]); }
+        pd->active = 0;
+    }
+    self->pinnedDrawCount = 0;
 }
 
 /*
@@ -896,6 +1165,7 @@ static unsigned long __stdcall WD_Release(WrappedDevice *self) {
     self->refCount--;
     if (self->refCount <= 0) {
         log_str("WrappedDevice released\r\n");
+        PinnedDraw_ReleaseAll(self);
         shader_release(self->lastVS);
         shader_release(self->lastPS);
         self->lastVS = NULL;
@@ -1046,6 +1316,10 @@ static int __stdcall WD_Reset(WrappedDevice *self, void *pPresentParams) {
 
     log_str("== Device Reset ==\r\n");
 
+    /* Pinned draws hold device resources — release before Reset */
+    PinnedDraw_ReleaseAll(self);
+    self->pinnedCaptureComplete = 0;
+
     shader_release(self->lastVS);
     shader_release(self->lastPS);
     self->lastVS = NULL;
@@ -1126,6 +1400,22 @@ static int __stdcall WD_Present(WrappedDevice *self, void *a, void *b, void *c, 
         self->frameSummaryCount++;
     }
 
+    /* Close capture window after PINNED_CAPTURE_FRAMES */
+    if (self->frameCount == PINNED_CAPTURE_FRAMES && !self->pinnedCaptureComplete) {
+        self->pinnedCaptureComplete = 1;
+        log_str("== PinnedDraw: capture complete, ");
+        log_int("", self->pinnedDrawCount);
+        log_str(" unique draws cached\r\n");
+    }
+
+    /* Replay pinned draws not submitted this frame (after capture window,
+     * every PINNED_REPLAY_INTERVAL frames to keep anti-culling alive) */
+    if (self->pinnedCaptureComplete &&
+        self->frameCount % PINNED_REPLAY_INTERVAL == 0)
+    {
+        PinnedDraw_ReplayMissing(self);
+    }
+
     self->frameCount++;
     self->ffpSetup = 0;
     self->ffpActive = 0;
@@ -1140,6 +1430,10 @@ static int __stdcall WD_Present(WrappedDevice *self, void *a, void *b, void *c, 
         int r;
         for (r = 0; r < 256; r++) self->vsConstWriteLog[r] = 0;
     }
+
+    /* Reset per-frame submission tracking for pinned draws */
+    PinnedDraw_FrameReset(self);
+
     hr = ((FN)RealVtbl(self)[SLOT_Present])(self->pReal, a, b, c, d);
 
     return hr;
@@ -1355,6 +1649,24 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
             TRL_PrepDraw(self);
             hr = ((FN)RealVtbl(self)[SLOT_DrawIndexedPrimitive])(self->pReal, pt, bvi, mi, nv, si, pc);
             self->drawsProcessed++;
+
+            /* Draw call replay cache: capture during early frames, mark as submitted always */
+            if (self->frameCount < PINNED_CAPTURE_FRAMES && !self->pinnedCaptureComplete) {
+                PinnedDraw *pd;
+                int idx = self->pinnedDrawCount; /* will be set if capture succeeds */
+                PinnedDraw_Capture(self);
+                /* If capture just added a new entry, fill in the draw params */
+                if (self->pinnedDrawCount > idx) {
+                    pd = &self->pinnedDraws[idx];
+                    pd->primType = pt;
+                    pd->baseVertexIndex = bvi;
+                    pd->minVertexIndex = mi;
+                    pd->numVertices = nv;
+                    pd->startIndex = si;
+                    pd->primCount = pc;
+                }
+            }
+            PinnedDraw_MarkSubmitted(self);
         }
     } else {
         /* No valid transforms — suppress to prevent empty position hash */
@@ -2583,6 +2895,8 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     { int t; for (t = 0; t < 8; t++) w->curTexture[t] = NULL; }
     w->loggedDeclCount = 0;
     w->strippedDeclCount = 0;
+    w->pinnedDrawCount = 0;
+    w->pinnedCaptureComplete = 0;
     { int ts; for (ts = 0; ts < 8; ts++) w->diagTexUniq[ts] = 0; }
     w->createTick = GetTickCount();
     w->diagLoggedFrames = 0;
