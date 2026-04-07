@@ -3,8 +3,8 @@
 This directory contains every test build from the project, committed in order. Each build has a `SUMMARY.md`, proxy source snapshot, and screenshots (where applicable).
 
 **Live status docs:**
-- [`WHITEBOARD.md`](WHITEBOARD.md) — culling layer map (22 layers), build history narrative, decision tree, key addresses
-- [`TEST_STATUS.md`](TEST_STATUS.md) — build-by-build pass/fail table, what's done, what remains
+- [`docs/status/WHITEBOARD.md`](../docs/status/WHITEBOARD.md) — culling layer map (22 layers), build history narrative, decision tree, key addresses
+- [`docs/status/TEST_STATUS.md`](../docs/status/TEST_STATUS.md) — build-by-build pass/fail table, what's done, what remains
 
 ---
 
@@ -32,7 +32,7 @@ Latest build: `build-044` — all three render paths patched; terrain path remai
 
 ### Pre-Archive — Early Development Session (2026-03-24)
 
-> Exploratory captures before the formal build numbering was established. See [`session-early-dev/`](session-early-dev/).
+> Exploratory captures before the formal build numbering was established. See [`session-000-early-dev/`](session-000-early-dev/).
 
 ---
 

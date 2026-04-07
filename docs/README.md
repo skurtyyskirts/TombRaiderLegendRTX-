@@ -4,6 +4,17 @@ Technical documentation for the TRL RTX Remix project, organized by type.
 
 ---
 
+## Status
+
+Live project tracking — updated at the end of each development phase.
+
+| File | Description |
+|------|-------------|
+| [`status/WHITEBOARD.md`](status/WHITEBOARD.md) | Live status: 22-layer culling map, build history narrative, decision tree, key addresses |
+| [`status/TEST_STATUS.md`](status/TEST_STATUS.md) | Build-by-build pass/fail table, what's done, what remains |
+
+---
+
 ## Research
 
 Deep-dive analysis reports and experiment logs.
@@ -17,6 +28,7 @@ Deep-dive analysis reports and experiment logs.
 | [`TRL_FFP_Proxy_RTX_Remix_Technical_Pipeline.md`](research/TRL_FFP_Proxy_RTX_Remix_Technical_Pipeline.md) | Technical pipeline: proxy → FFP → Remix |
 | [`TRL_RenderDoc_Capture_Analysis.md`](research/TRL_RenderDoc_Capture_Analysis.md) | RenderDoc frame capture analysis |
 | [`TRL-Lara-Visibility-Fix-Report.md`](research/TRL-Lara-Visibility-Fix-Report.md) | Lara character visibility investigation |
+| [`trl-vs-constant-layout.md`](research/trl-vs-constant-layout.md) | VS constant register layout analysis (c0–c96 call sites, matrix upload paths) |
 | [`dxvk-debug-usd-analysis-design.md`](research/dxvk-debug-usd-analysis-design.md) | DXVK debug + USD analysis design spec |
 | [`trl-ffp-discovery.md`](research/trl-ffp-discovery.md) | Early FFP discovery notes |
 | [`trl-ffp-ghidra-caps-gate.md`](research/trl-ffp-ghidra-caps-gate.md) | Ghidra caps gate analysis |
@@ -31,6 +43,7 @@ Quick-lookup technical reference documents.
 
 | File | Description |
 |------|-------------|
+| [`TECHNICAL_BUILD_DOCUMENT.md`](reference/TECHNICAL_BUILD_DOCUMENT.md) | Complete technical specification: proxy design, VS register layout, game memory patches, build steps |
 | [`TRL-RTX-Remix-Index.md`](reference/TRL-RTX-Remix-Index.md) | Master index of all known addresses and symbols |
 | [`TRL-RTX-Remix-Definition-Book.md`](reference/TRL-RTX-Remix-Definition-Book.md) | Glossary of engine terms, Remix concepts, and project-specific definitions |
 | [`TRL-RTX-Remix-Rosetta-Stone.md`](reference/TRL-RTX-Remix-Rosetta-Stone.md) | Cross-reference: engine internals ↔ Remix concepts |
@@ -40,6 +53,7 @@ Quick-lookup technical reference documents.
 | [`hash-stability.md`](reference/hash-stability.md) | Asset hash stability rules and findings |
 | [`hash-debugger.md`](reference/hash-debugger.md) | Hash debug mode: how to use and interpret |
 | [`rtx-conf-reference.md`](reference/rtx-conf-reference.md) | `rtx.conf` settings reference for this project |
+| [`d3d9-short4-vertex-decoding.md`](reference/d3d9-short4-vertex-decoding.md) | Architectural analysis of `D3DDECLTYPE_SHORT4` vertex encoding and hardware-level interception for Remix compatibility |
 
 ---
 
