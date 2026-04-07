@@ -184,6 +184,9 @@ Every culling mechanism discovered and its patch status:
 | Anchor to Lara's always-drawn mesh | Find Lara's body hash; anchor lights to her — she's always rendered | Easy |
 | Investigate portal/PVS traversal | Sector graph may exclude anchor mesh sectors when camera is rotated; individual cull NOPs are downstream | Hard |
 | Patch LOD alpha fade at 0x446580 | 10 callers, may fade geometry at distance | Medium |
+| Per-object visibility flags at [obj+8] bits 0x01/0x02/0x04 | Proxy NOPs only the `test bit 0x10` visibility check; other bits in the per-object bitfield may independently gate draw submission (build 064) | Medium |
+| Audit proxy DIP routing for object-type filtering | Light-anchor mesh objects may have a type or flag that causes them to be filtered before the proxy routes them to Remix — no proxy code currently checks for this (build 065) | Medium |
+| Characterize `useVertexCapture=True` hash instability | Build 068 identifies clip-space hash drift under `useVertexCapture=True` as a separate blocker from the geometry-submission problem; not yet reproduced or characterized with the current proxy | Easy |
 
 ---
 
