@@ -97,6 +97,9 @@ def set_graphics_config():
 
         settings = {
             "Fullscreen": 1,
+            "Width": 3840,
+            "Height": 2160,
+            "Refresh": 240,
             "EnableFSAA": 0,
             "EnableFullscreenEffects": 0,
             "EnableDepthOfField": 0,
@@ -113,6 +116,14 @@ def set_graphics_config():
             "AdapterID": 0,
             "DisablePureDevice": 0,         # Proxy already strips PUREDEVICE flag
             "DontDeferShaderCreation": 1,    # All shaders created at startup
+            "AlwaysRenderZPassFirst": 0,    # Interferes with Remix rendering
+            "CreateGameFourCC": 0,          # Not needed, can cause format issues
+            "NoDynamicTextures": 0,
+            "Shadows": 0,
+            "AntiAlias": 0,
+            "TextureFilter": 0,
+            "NextGenContent": 0,
+            "ScreenEffects": 0,
         }
         for name, val in settings.items():
             winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, val)
@@ -154,6 +165,9 @@ def dismiss_setup_dialog():
     CB_GETLBTEXTLEN = 0x0149
     CB_SETCURSEL = 0x014E
     CB_GETCURSEL = 0x0147
+    WM_COMMAND = 0x0111
+    CBN_SELCHANGE = 1
+    GW_ID = 0xFFFC  # GetWindowLong index for control ID
     WNDENUMPROC = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
 
     from livetools.gamectl import _find_pid
@@ -202,9 +216,8 @@ def dismiss_setup_dialog():
         if hwnd:
             state = user32.SendMessageW(hwnd, BM_GETCHECK, 0, 0)
             if state == BST_CHECKED:
-                user32.SendMessageW(hwnd, BM_SETCHECK, BST_UNCHECKED, 0)
-                # Also send BM_CLICK to trigger the dialog's change handler
                 user32.SendMessageW(hwnd, BM_CLICK, 0, 0)
+                time.sleep(0.05)
                 print(f"    Unchecked: {label}")
 
     # Helper: check a checkbox if it's unchecked
@@ -213,14 +226,20 @@ def dismiss_setup_dialog():
         if hwnd:
             state = user32.SendMessageW(hwnd, BM_GETCHECK, 0, 0)
             if state == BST_UNCHECKED:
-                user32.SendMessageW(hwnd, BM_SETCHECK, BST_CHECKED, 0)
                 user32.SendMessageW(hwnd, BM_CLICK, 0, 0)
+                time.sleep(0.05)
                 print(f"    Checked: {label}")
+
+    # Helper: set combobox selection AND notify the dialog
+    def combo_select(combo_hwnd, index):
+        """Select item in combobox and send CBN_SELCHANGE to the dialog."""
+        user32.SendMessageW(combo_hwnd, CB_SETCURSEL, index, 0)
+        ctrl_id = user32.GetDlgCtrlID(combo_hwnd)
+        wparam = (CBN_SELCHANGE << 16) | (ctrl_id & 0xFFFF)
+        user32.SendMessageW(dialog_hwnd[0], WM_COMMAND, wparam, combo_hwnd)
 
     # Helper: select combobox item containing target text
     def select_combo_item(label_text, target_text):
-        # Find the combobox that comes after the label
-        # We need to find it by enumerating and checking class
         combo_hwnds = []
 
         @WNDENUMPROC
@@ -233,7 +252,6 @@ def dismiss_setup_dialog():
 
         user32.EnumChildWindows(dialog_hwnd[0], find_combos, 0)
 
-        # Match combo to its preceding label by position
         label_hwnd = children.get(label_text)
         if not label_hwnd:
             return
@@ -247,7 +265,6 @@ def dismiss_setup_dialog():
         for ch in combo_hwnds:
             cr = wt.RECT()
             user32.GetWindowRect(ch, ctypes.byref(cr))
-            # Combo should be roughly on the same row (within 30px vertical)
             if abs(cr.top - label_rect.top) < 30 and cr.left > label_rect.left:
                 dist = cr.left - label_rect.right
                 if dist < best_dist:
@@ -255,7 +272,7 @@ def dismiss_setup_dialog():
                     best_combo = ch
 
         if not best_combo:
-            # Fallback: just try all combos
+            # Fallback: try all combos
             for ch in combo_hwnds:
                 count = user32.SendMessageW(ch, CB_GETCOUNT, 0, 0)
                 for i in range(count):
@@ -265,7 +282,7 @@ def dismiss_setup_dialog():
                         user32.SendMessageW(ch, CB_GETLBTEXT, i,
                                             ctypes.addressof(buf))
                         if target_text.lower() in buf.value.lower():
-                            user32.SendMessageW(ch, CB_SETCURSEL, i, 0)
+                            combo_select(ch, i)
                             print(f"    {label_text}: {buf.value}")
                             return
             return
@@ -279,13 +296,13 @@ def dismiss_setup_dialog():
                 user32.SendMessageW(best_combo, CB_GETLBTEXT, i,
                                     ctypes.addressof(buf))
                 if target_text.lower() in buf.value.lower():
-                    user32.SendMessageW(best_combo, CB_SETCURSEL, i, 0)
+                    combo_select(best_combo, i)
                     print(f"    {label_text}: {buf.value}")
                     return
 
         # If exact target not found, select the last item (highest res/rate)
         if count > 0:
-            user32.SendMessageW(best_combo, CB_SETCURSEL, count - 1, 0)
+            combo_select(best_combo, count - 1)
             print(f"    {label_text}: selected last option (highest available)")
 
     # === Configure settings ===
@@ -323,9 +340,20 @@ def dismiss_setup_dialog():
     ensure_unchecked("Disable Driver Management")
     ensure_unchecked("Disable Hardware Shadow Maps")
     ensure_unchecked("Disable Null Render Targets")
+    ensure_unchecked("Always Render Z-pass First")
+    ensure_unchecked("Create Game FourCC")
     ensure_checked("Dont Defer Shader Creation") # All shaders created at startup for Remix
 
-    time.sleep(0.5)
+    time.sleep(1.0)
+
+    # Verify critical settings before clicking Ok
+    verify_hwnd = children.get("Dont Defer Shader Creation")
+    if verify_hwnd:
+        state = user32.SendMessageW(verify_hwnd, BM_GETCHECK, 0, 0)
+        if state != BST_CHECKED:
+            print("  WARNING: 'Dont Defer Shader Creation' not checked — retrying")
+            user32.SendMessageW(verify_hwnd, BM_CLICK, 0, 0)
+            time.sleep(0.05)
 
     # Click Ok to accept and launch
     ok_hwnd = children.get("Ok")
@@ -338,6 +366,20 @@ def dismiss_setup_dialog():
     return False
 
 
+def write_tr7_arg(chapter=4):
+    """Write TR7.arg to skip the main menu and load directly into a chapter.
+
+    The game reads startup args from <drive>:\\TR7\\GAME\\PC\\TR7.arg.
+    -NOMAINMENU -CHAPTER 4 loads Peru (Return to Paraiso) directly.
+    """
+    drive = os.path.splitdrive(str(GAME_DIR))[0]
+    arg_dir = Path(f"{drive}/TR7/GAME/PC")
+    arg_dir.mkdir(parents=True, exist_ok=True)
+    arg_file = arg_dir / "TR7.arg"
+    arg_file.write_text(f"-NOMAINMENU -CHAPTER {chapter}")
+    print(f"Wrote TR7.arg: -NOMAINMENU -CHAPTER {chapter}")
+
+
 def kill_game():
     """Kill trl.exe if running."""
     subprocess.run(["taskkill", "/f", "/im", "trl.exe"],
@@ -346,8 +388,8 @@ def kill_game():
 
 
 def launch_game():
-    """Launch TRL via NvRemixLauncher32 and return once the window appears."""
-    from livetools.gamectl import find_hwnd_by_exe, get_window_info
+    """Launch TRL directly into Peru via TR7.arg, skip cutscene, return hwnd."""
+    from livetools.gamectl import find_hwnd_by_exe, get_window_info, send_keys
 
     if not LAUNCHER.exists():
         print(f"ERROR: Launcher not found: {LAUNCHER}")
@@ -355,6 +397,8 @@ def launch_game():
     if not GAME_EXE.exists():
         print(f"ERROR: Game exe not found: {GAME_EXE}")
         sys.exit(1)
+
+    write_tr7_arg(chapter=4)
 
     print(f"Launching: {LAUNCHER.name} {GAME_EXE.name}")
     subprocess.Popen([str(LAUNCHER), str(GAME_EXE)], cwd=str(GAME_DIR))
@@ -390,12 +434,11 @@ def launch_game():
         print("ERROR: Game window not found after 90s")
         sys.exit(1)
 
-    # Let the game fully load (D3D init, Remix init, shader compilation).
-    # Do NOT touch the window or call focus functions — fullscreen D3D9
-    # games crash if you trigger focus changes during initialization.
-    print("Window found. Waiting 20s for game to fully load...")
+    # Let the game fully load and play through the cutscene.
+    # Do NOT touch the window or send any keys during this time.
+    print("Window found. Waiting 15s for game to load and cutscene to play...")
     print("  (Do not click or alt-tab — let the game initialize)")
-    time.sleep(20)
+    time.sleep(15)
 
     return hwnd
 
@@ -470,12 +513,10 @@ def generate_random_movement():
 
     Each call produces a unique pattern of A/D strafes with random hold
     durations, interspersed with screenshots (]) at varied positions.
-    This ensures asset hashes are tested from many different camera angles
-    and character positions.
     """
     tokens = []
 
-    # Initial settle time after level loads
+    # Initial settle time after cutscene skip
     tokens.append("WAIT:2500")
 
     # Walk forward for 3 seconds to move into the scene
@@ -574,28 +615,22 @@ def do_live_analysis(hwnd, duration_s=60):
         phase = i % 6
 
         if phase == 0:
-            # Strafe left
             send_key("A", hold_ms=random.randint(400, 1200))
         elif phase == 1:
-            # Look right (mouse)
             for _ in range(5):
                 move_mouse_relative(random.randint(30, 80), random.randint(-15, 15))
                 time.sleep(0.1)
         elif phase == 2:
-            # Strafe right
             send_key("D", hold_ms=random.randint(400, 1200))
         elif phase == 3:
-            # Look left (mouse)
             for _ in range(5):
                 move_mouse_relative(random.randint(-80, -30), random.randint(-15, 15))
                 time.sleep(0.1)
         elif phase == 4:
-            # Look up/down
             for _ in range(5):
                 move_mouse_relative(random.randint(-10, 10), random.randint(-60, 60))
                 time.sleep(0.1)
         elif phase == 5:
-            # Take a screenshot at this position
             send_key("]", hold_ms=50)
 
         remaining = duration_s - elapsed
@@ -662,19 +697,11 @@ def do_test(build_first=False, randomize=False):
     macro_info = macros[MACRO_NAME]
 
     if randomize:
-        # Replace the movement portion (after level load) with random pattern.
-        # Keep menu navigation up to and including the camera pan, then
-        # substitute everything from the first HOLD onward.
-        original_steps = macro_info["steps"]
-        # Split at the first HOLD token — everything before is menu nav + camera
-        parts = original_steps.split("HOLD:", 1)
-        menu_nav = parts[0].rstrip()
+        # Replace macro with fully random movement+screenshot sequence.
+        # Macros are pure movement now (no menu nav — TR7.arg handles that).
         random_movement = generate_random_movement()
-        steps = f"{menu_nav} {random_movement}"
-        # Patch in-memory so run_macro uses it
-        macros[MACRO_NAME] = {**macro_info, "steps": steps}
+        macros[MACRO_NAME] = {**macro_info, "steps": random_movement}
 
-        # Log what we generated
         holds = [t for t in random_movement.split() if t.startswith("HOLD:")]
         screenshots = random_movement.count("]")
         print(f"\nRandomized movement: {len(holds)} strafes, "

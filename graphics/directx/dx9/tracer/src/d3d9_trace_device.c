@@ -489,7 +489,9 @@ static void trace_post(int slot, DWORD retval, DWORD *args) {
         }
     }
 
-    if (slot == SLOT_Present)
+    /* TRL (and games using dxwrapper/SwapChain::Present) never call
+     * Device::Present.  Use EndScene as the frame-boundary trigger instead. */
+    if (slot == SLOT_Present || slot == SLOT_EndScene)
         trace_on_present();
 }
 

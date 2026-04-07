@@ -649,15 +649,19 @@ TRL was originally a D3D8 game. DXWrapper translates D3D8âD3D9. Key discove
 
 ## 11. Known Issues and Limitations
 
-1. **Skinning is disabled** (`ENABLE_SKINNING=0`): Skeletal animation (Lara's body, NPCs) renders in T-pose or with incorrect bone transforms. Enabling requires thorough testing of the bone palette upload path.
+1. **Hash instability with useVertexCapture (TOP PRIORITY)**: `rtx.useVertexCapture=True` captures post-shader clip-space positions that change every frame with camera movement. This breaks all Remix content anchoring (lights, materials, replacements). The fix requires CPU-side SHORT4->FLOAT3 expansion with `useVertexCapture=False`. A 512-entry expansion cache exists in the proxy but rendering issues remain. See [FINDINGS_PAPER.md](TombRaiderLegendRTX-/FINDINGS_PAPER.md) for full analysis.
 
-2. **View-space geometry detection is heuristic**: FLOAT3 draws are classified as view-space based on the c0-c3 matrix pattern. If a FLOAT3 draw has a non-projection matrix in c0-c3, it will be misclassified.
+2. **Skinning is disabled** (`ENABLE_SKINNING=0`): Skeletal animation (Lara's body, NPCs) renders in T-pose or with incorrect bone transforms. Enabling requires thorough testing of the bone palette upload path.
 
-3. **Memory addresses are hardcoded**: All game memory addresses are for the specific Steam release of trl.exe (13.7 MB, no ASLR). Other versions (GOG, retail disc) may have different addresses.
+3. **View-space geometry detection is heuristic**: FLOAT3 draws are classified as view-space based on the c0-c3 matrix pattern. If a FLOAT3 draw has a non-projection matrix in c0-c3, it will be misclassified.
 
-4. **No morph target support**: Lara's face blend shapes (POSITION[1]) are detected but not specially handled.
+4. **Memory addresses are hardcoded**: All game memory addresses are for the specific Steam release of trl.exe (13.7 MB, no ASLR). Other versions (GOG, retail disc) may have different addresses.
 
-5. **UP draw scratch buffer is 1 MB**: DrawPrimitiveUP calls with vertex data exceeding 1 MB will not have their vertex colors neutralized.
+5. **No morph target support**: Lara's face blend shapes (POSITION[1]) are detected but not specially handled.
+
+6. **UP draw scratch buffer is 1 MB**: DrawPrimitiveUP calls with vertex data exceeding 1 MB will not have their vertex colors neutralized.
+
+7. **Sector light list population unpatched**: `FUN_006033d0` / `FUN_00602aa0` apply proximity filters that prevent distant sectors from receiving lights. Red light anchor meshes are in sectors with zero native static light data. This is secondary to hash instability but will need addressing.
 
 ---
 

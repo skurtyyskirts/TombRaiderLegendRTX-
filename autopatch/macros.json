@@ -1,42 +1,42 @@
 {
-    "near_stage": {
-        "description": "Walk Lara near the Bolivia stage area (short forward walk from spawn)",
-        "steps": [
-            "WAIT:3000",
-            "HOLD:W:3000",
-            "WAIT:1000",
-            "HOLD:A:2000",
-            "WAIT:1000"
-        ]
-    },
-    "far_stage": {
-        "description": "Walk Lara far from the Bolivia stage (extended walk away)",
-        "steps": [
-            "WAIT:3000",
-            "HOLD:W:8000",
-            "WAIT:1000",
-            "HOLD:D:5000",
-            "WAIT:1000",
-            "HOLD:W:5000",
-            "WAIT:1000"
-        ]
-    },
-    "eval_3pos": {
-        "description": "Three-position evaluation: near, mid, far with screenshots at each",
-        "steps": [
-            "WAIT:3000",
-            "HOLD:W:3000",
-            "WAIT:1500",
-            "]",
-            "WAIT:1500",
-            "HOLD:A:4000",
-            "WAIT:1500",
-            "]",
-            "WAIT:1500",
-            "HOLD:D:8000",
-            "WAIT:1500",
-            "]",
-            "WAIT:1000"
-        ]
-    }
+  "near_stage": {
+    "description": "Walk Lara near the stage area (cutscene skip handled by launcher)",
+    "steps": [
+      "WAIT:3000",
+      "HOLD:W:3000",
+      "WAIT:1000",
+      "HOLD:A:2000",
+      "WAIT:1000"
+    ]
+  },
+  "far_stage": {
+    "description": "Walk Lara far from the stage (cutscene skip handled by launcher)",
+    "steps": [
+      "WAIT:3000",
+      "HOLD:W:8000",
+      "WAIT:1000",
+      "HOLD:D:5000",
+      "WAIT:1000",
+      "HOLD:W:5000",
+      "WAIT:1000"
+    ]
+  },
+  "eval_3pos": {
+    "description": "Three-position evaluation: near, mid, far with screenshots at each",
+    "steps": [
+      "WAIT:3000",
+      "HOLD:W:3000",
+      "WAIT:1500",
+      "]",
+      "WAIT:1500",
+      "HOLD:A:4000",
+      "WAIT:1500",
+      "]",
+      "WAIT:1500",
+      "HOLD:D:8000",
+      "WAIT:1500",
+      "]",
+      "WAIT:1000"
+    ]
+  }
 }

@@ -41,26 +41,143 @@ def _kill_game() -> None:
     time.sleep(2)
 
 
+LEVEL_LOAD_FN = 0x00451970   # GAMELOOP_RequestLevelChangeByName
+GAME_TRACKER   = "0x010E5370"  # GameTracker global struct address
+FRAME_COUNTER  = "0x010E5424"  # g_frameCounter (incremented each frame)
+DEFAULT_LEVEL  = "flashback1"  # Peru (Return to Paraiso) — DRM name from ChapterSpec
+
+
+def _load_level_via_frida(level_name: str) -> bool:
+    """Request a level change by calling GAMELOOP_RequestLevelChangeByName.
+
+    Requires livetools to be attached already. Allocates a string buffer in
+    the target process, writes the level name, and calls the function.
+    """
+    from livetools import client
+
+    alloc_resp = client.send_command({"cmd": "mem_alloc", "size": 64})
+    if not alloc_resp.get("ok"):
+        print(f"  [load_level] Failed to allocate: {alloc_resp.get('msg')}")
+        return False
+
+    str_addr = "0x" + alloc_resp["addr"].lstrip("0x")
+    name_hex = level_name.encode("ascii").hex() + "00"
+    client.send_command({"cmd": "mem_write", "addr": str_addr, "hex": name_hex})
+
+    resp = client.send_command({
+        "cmd": "call",
+        "addr": hex(LEVEL_LOAD_FN),
+        "abi": "default",
+        "retType": "void",
+        "argTypes": ["pointer", "pointer", "int32"],
+        "argValues": [str_addr, GAME_TRACKER, 4],
+    })
+    if not resp.get("ok"):
+        print(f"  [load_level] Call failed: {resp.get('msg')}")
+        return False
+
+    print(f"  [load_level] Level load requested: '{level_name}'")
+    return True
+
+
+def _wait_for_level_loaded(timeout: int = 60) -> bool:
+    """Wait for a level to finish loading after RequestLevelChangeByName.
+
+    Polls g_pCurrentScene — when it changes from its pre-load value, the
+    new level's scene object has been created and gameplay can begin.
+    Falls back to a fixed delay if polling fails.
+    """
+    from livetools import client
+
+    # Read initial scene pointer
+    SCENE_PTR = "0x010E537C"  # g_pCurrentScene
+    initial = client.send_command({"cmd": "mem_read", "addr": SCENE_PTR, "size": 4})
+    initial_hex = initial.get("hex", "") if initial.get("ok") else ""
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(3)
+        current = client.send_command({"cmd": "mem_read", "addr": SCENE_PTR, "size": 4})
+        if not current.get("ok"):
+            continue
+        if current["hex"] != initial_hex and current["hex"] != "00000000":
+            print(f"  [load_level] Scene changed: {initial_hex} -> {current['hex']}")
+            time.sleep(5)  # extra settle time after scene loads
+            return True
+
+    print("  [load_level] Timeout — using fixed delay fallback")
+    return True  # proceed anyway, the level may have loaded
+
+
 def _launch_game() -> int | None:
-    """Launch TRL and return hwnd, or None on failure."""
-    from livetools.gamectl import find_hwnd_by_exe
+    """Launch TRL directly into Peru via TR7.arg, skip cutscene, return hwnd."""
+    from livetools.gamectl import find_hwnd_by_exe, get_window_info, send_keys
+
+    sys.path.insert(0, str(REPO_ROOT / "patches" / "TombRaiderLegend"))
+    from run import set_graphics_config, dismiss_setup_dialog, write_tr7_arg
+    set_graphics_config()
+    write_tr7_arg(chapter=4)
 
     launcher = GAME_DIR / "NvRemixLauncher32.exe"
     game_exe = GAME_DIR / "trl.exe"
-    subprocess.Popen([str(launcher), str(game_exe)], cwd=str(GAME_DIR))
 
-    # Wait for window — simplified, no setup dialog (registry pre-configured)
-    for _ in range(90):
+    if launcher.exists():
+        subprocess.Popen([str(launcher), str(game_exe)], cwd=str(GAME_DIR))
+    else:
+        subprocess.Popen([str(game_exe)], cwd=str(GAME_DIR))
+
+    # Wait for game window, dismissing setup dialog if it appears
+    print("  Waiting for game window...")
+    hwnd = None
+    setup_dismissed = False
+    for i in range(90):
+        if not setup_dismissed and dismiss_setup_dialog():
+            setup_dismissed = True
+            print("  Setup dialog configured and dismissed")
+            time.sleep(3)
+            continue
+
         hwnd = find_hwnd_by_exe("trl.exe")
         if hwnd:
-            return hwnd
+            info = get_window_info(hwnd)
+            if "Setup" not in info["title"]:
+                break
+            else:
+                dismiss_setup_dialog()
+                hwnd = None
         time.sleep(1)
-    return None
+
+    if not hwnd:
+        print("  ERROR: Game did not start within 90s")
+        return None
+
+    print(f"  Game window found (hwnd={hwnd})")
+
+    # Wait for game to load (D3D init, Remix init, shader compilation)
+    print("  Waiting 20s for game to initialize...")
+    time.sleep(20)
+
+    # Skip the Peru cutscene (3s wait, then ESC → W → ENTER)
+    print("  Skipping cutscene...")
+    time.sleep(3)
+    send_keys(hwnd, "ESCAPE WAIT:1550 W WAIT:1550 RETURN")
+
+    # Wait for gameplay to start
+    print("  Waiting 5s for gameplay to start...")
+    time.sleep(5)
+
+    # Verify game is still alive
+    if not find_hwnd_by_exe("trl.exe"):
+        print("  ERROR: Game exited during level load")
+        return None
+
+    print("  [navigate] Peru level loaded, Lara in gameplay")
+    return hwnd
 
 
 def _run_eval_macro(hwnd: int) -> list[Path]:
-    """Run the 3-position evaluation macro and collect screenshots."""
-    from livetools.gamectl import send_keys, load_macros
+    """Run the 3-position evaluation macro with crash detection between steps."""
+    from livetools.gamectl import send_keys, load_macros, find_hwnd_by_exe
 
     macros = load_macros(str(MACROS_FILE))
     if "eval_3pos" not in macros:
@@ -69,9 +186,15 @@ def _run_eval_macro(hwnd: int) -> list[Path]:
 
     before_ts = time.time()
     steps = macros["eval_3pos"]["steps"]
-    send_keys(hwnd, " ".join(steps), delay_ms=0)
-    time.sleep(3)
 
+    # Run steps individually so we can bail early on crash
+    for step in steps:
+        if find_hwnd_by_exe("trl.exe") is None:
+            print("  [macro] Game died mid-macro, aborting remaining steps")
+            return _collect_screenshots(after_ts=before_ts, limit=3)
+        send_keys(hwnd, step, delay_ms=0)
+
+    time.sleep(3)
     return _collect_screenshots(after_ts=before_ts, limit=3)
 
 
@@ -156,11 +279,11 @@ def run(skip_diagnosis: bool = False, dry_run: bool = False) -> None:
     # Step 5: Patch & test loop
     print(f"\n[5] Starting patch loop (max {MAX_ITERATIONS} iterations)...")
     _kill_game()
+    session_failures = 0
 
     for i, hypothesis in enumerate(hypotheses[:MAX_ITERATIONS]):
-        # Check across runs — not just this session
-        if kb.consecutive_failures() >= MAX_ITERATIONS:
-            print(f"\n  {MAX_ITERATIONS} consecutive failures (including prior runs) "
+        if session_failures >= MAX_ITERATIONS:
+            print(f"\n  {MAX_ITERATIONS} consecutive failures this session "
                   f"— pausing for human review.")
             break
 
@@ -184,10 +307,8 @@ def run(skip_diagnosis: bool = False, dry_run: bool = False) -> None:
                 confidence=hypothesis.confidence,
                 notes="Game failed to launch",
             ))
+            session_failures += 1
             continue
-
-        print("  Waiting 25s for game to load...")
-        time.sleep(25)
 
         # 5b: Attach livetools
         if not attach_livetools():
@@ -203,6 +324,7 @@ def run(skip_diagnosis: bool = False, dry_run: bool = False) -> None:
                 confidence=hypothesis.confidence,
                 notes="Failed to attach livetools",
             ))
+            session_failures += 1
             continue
 
         # 5c: Apply runtime patch
@@ -222,6 +344,7 @@ def run(skip_diagnosis: bool = False, dry_run: bool = False) -> None:
                 confidence=hypothesis.confidence,
                 notes="Failed to write patch bytes",
             ))
+            session_failures += 1
             continue
 
         # 5d: Run evaluation macro
@@ -246,6 +369,7 @@ def run(skip_diagnosis: bool = False, dry_run: bool = False) -> None:
                 notes="Game crashed during evaluation",
             ))
             _kill_game()
+            session_failures += 1
             continue
 
         # 5f: Detach and evaluate
@@ -264,6 +388,7 @@ def run(skip_diagnosis: bool = False, dry_run: bool = False) -> None:
                 confidence=hypothesis.confidence,
                 notes="No screenshots captured",
             ))
+            session_failures += 1
             continue
 
         verdict = evaluate_screenshots(screenshots)
@@ -283,9 +408,12 @@ def run(skip_diagnosis: bool = False, dry_run: bool = False) -> None:
             patch_type="runtime",
             passed=verdict.passed,
             crashed=False,
-            confidence=verdict.confidence,
+            confidence=float(verdict.confidence),
             notes=f"red={verdict.red_visible} green={verdict.green_visible}",
         ))
+
+        if not verdict.passed:
+            session_failures += 1
 
         # 5h: If PASS — promote and finalize
         if verdict.passed:

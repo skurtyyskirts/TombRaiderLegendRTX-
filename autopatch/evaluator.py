@@ -50,7 +50,7 @@ def detect_lights(image_path: str | Path) -> LightDetection:
     """Scan a screenshot for red and green light regions.
 
     Divides the image into a grid and checks each cell for color dominance.
-    The Bolivia stage lights are distinctly red and green against a dark scene,
+    The Peru stage lights are distinctly red and green against a dark scene,
     making simple channel analysis reliable.
     """
     img = Image.open(image_path).convert("RGB")

@@ -59,9 +59,19 @@ def restore_game_dll() -> bool:
     dst_ini = GAME_DIR / "proxy.ini"
     restored = False
     if bak_dll.exists():
+        # Sanity check: the proxy DLL is much smaller than the tracer (~24KB vs ~160KB).
+        # If the backup is tracer-sized, refuse to restore — it's not the real proxy.
+        bak_size = bak_dll.stat().st_size
+        if bak_size > 100_000:
+            print(f"[safety] WARNING: backup d3d9.dll is {bak_size} bytes "
+                  f"(expected <100KB for proxy). Refusing to restore — "
+                  f"backup may be the tracer, not the proxy.")
+            return False
         shutil.copy2(bak_dll, dst_dll)
         bak_dll.unlink()
         restored = True
+    else:
+        print("[safety] WARNING: d3d9.dll.proxy_backup not found, cannot restore")
     if bak_ini.exists():
         shutil.copy2(bak_ini, dst_ini)
         bak_ini.unlink()

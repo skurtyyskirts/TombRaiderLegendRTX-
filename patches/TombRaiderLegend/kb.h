@@ -127,13 +127,39 @@ struct TRLRenderer {
              //   CULL JUMP 1: 0x60CDE2 (je +0x61, 2 bytes: 74 61) — skips light if FUN_0060b050 returns 0
              //   CULL JUMP 2: 0x60CE20 (jnp +0x18D, 6 bytes: 0F 8B 8D 01 00 00) — defers light on plane fail
              //   Vtable dispatch: [edx+0x14] = GetBoundingSphere (slot 5), [eax+0x18] = Draw (slot 6)
+@ 0x006037D0 int __thiscall LightVolume_HasData(void* this);
+             //   Iterates [this+0x1C] array (count at [this+0x14]), checks each entry's
+             //   [+0x94]+[+0x84]. Returns 1 if any nonzero, 0 if all zero.
+             //   Called at 0x60A52F — if returns 0, entire light render path is skipped
+             //   (je at 0x60A53C jumps past RenderLights_Caller call at 0x60A62C).
+             //   PATCH: B0 01 C3 (mov al, 1; ret) — always report lights present.
+@ 0x00603810 void __thiscall LightVolume_DispatchAll(void* this);
+             //   Iterates [this+0x1C] array, calls RenderLights_Caller (0x60E2D0)
+             //   for each entry where [entry+0x94]+[entry+0x84] != 0.
+             //   Called from 0x60A62C. Single xref caller.
 @ 0x0060E2D0 void __thiscall RenderLights_Caller(void* this);
              //   Outer caller of RenderLights_FrustumCull. Sets up shadow/stencil state.
-             //   Checks: [this+0x84] (light data ptr), [scene+0x166] (light enable),
-             //   [renderer+0x444]&1 (light capability), [this+0x1B0] (light count).
-             //   If light count > 0, calls RenderLights_FrustumCull.
-             //   Gate at 0x60E3B1: JE 0x60E4B6 skips if no lights.
-             //   Called from 0x603810.
+             //   THREE CONDITIONS must be true to reach FrustumCull:
+             //   1. [this+0x84] != 0 (light data ptr exists)
+             //   2. [g_pEngineRoot+0x166] != 0 (scene-level light enable flag)
+             //   3. [this+0x74]->[+0x444] & 1 (renderer light capability bit)
+             //   If all 3 true AND [this+0x150] != 0, shadow flag (esp+0x16) set.
+             //   FrustumCull gate: [this+0x1B0] != 0 sets esp+0x17 = 1 at 0x60E34D.
+             //   0x60E3B1: JE 0x60E4B6 skips FrustumCull if esp+0x17 == 0.
+             //   Called from 0x603810 (LightGroupArray_RenderAll).
+@ 0x00603810 void __fastcall LightGroupArray_RenderAll(int lightGroupArray);
+             //   Iterates [param+0x14] light groups via array at [param+0x1C].
+             //   For each group: checks [group+0x94]+[group+0x84] != 0 (has light data).
+             //   If so, stores group ptr at [param+0x228] and calls RenderLights_Caller.
+             //   Called from RenderLights_TopLevel at 0x60A62C.
+@ 0x0060A0F0 void __thiscall RenderLights_TopLevel(void* this);
+             //   Top-level render lights function. Entry at 0x60A0F0 in a larger function.
+             //   THREE EARLY-EXIT conditions at entry (all jump to cleanup at 0x60AB40):
+             //   1. [this+0xFA2E] != 0 (rendering disabled flag)
+             //   2. [this+0xFA2C] == 0 (lights not initialized)
+             //   3. [g_pEngineRoot+0x10] != 0 (scene loading/transition flag)
+             //   Called via VTABLE slot [6] (+0x18) at vtable 0xF08480.
+             //   NO direct call xrefs -- only reachable via virtual dispatch.
 @ 0x0060BCF0 void __thiscall RenderLights_PreSetup(void* this);
              //   Pre-light renderer setup, called before RenderLights_FrustumCull
 @ 0x0060E150 void __thiscall RenderLights_ShadowSetup(void* this);
@@ -233,9 +259,154 @@ struct RenderContext {
              //   dereferencing at 0x4071E2 (mov [edx+0x40], eax). Nodes with flags bit 4 set
              //   are skipped safely; nodes without the flag but with NULL ctx crash.
              //   RET patch at entry (0xC3) prevents crash and disables all scene culling.
-@ 0x00443C20 void __cdecl RenderScene(void* sceneData, void* cameraMatrix);  // calls matrix setup -> scene traversal -> post-process
-@ 0x00450B00 void __cdecl RenderFrame(void* frameData);  // mid-level render loop, world object iteration, calls RenderScene
-@ 0x00450DE0 void __cdecl RenderFrame_TopLevel(void* context);  // entry point with fade-in/out logic
+@ 0x00443C20 void __cdecl RenderScene(void* sceneData, void* cameraMatrix);
+             //   Calls: CopyMatrixToGlobal(cameraMatrix) -> SceneTraversal_CullAndSubmit(sceneData)
+             //   -> RenderScene_PostProcess -> SubmitMesh_Generic -> 0x446D90(0) -> 0x446D90(1)
+             //   This populates the draw queue that is later flushed by DrawPass_FlushBatches (0x415260)
+// ============================================================
+// Sector visibility pipeline — mesh-level culling
+// ============================================================
+
+@ 0x0046C180 void __cdecl SectorVisibility_RenderVisibleSectors(int sceneData);
+             //   Three render paths:
+             //   Path 1 (type==1): Sector_RenderMeshes (0x46B7D0) — per-sector mesh submission
+             //   Path 2 (type==2): Sector_RenderFullscreen (0x46B890) — fullscreen overlay sectors
+             //   Path 3: PostSector_ObjectLoop (tail-call to 0x40E2C0) — per-sector object iteration
+             //   PATCHED: 0x46C194 (je->nop) and 0x46C19D (jne->nop) force all 8 sectors visible
+             //   UNPATCHED GATES:
+             //   0x46C237/0x46C242: frustum width check — sector screen-space width < [0x10FC920]
+             //   0x46C250/0x46C25B: frustum height check — sector screen-space height < [0x10FC924]
+@ 0x0046B7D0 void __cdecl Sector_RenderMeshes(void* sectorData);
+             //   Iterates objects in sector mesh array, checks flags & 1 and & 0x20000 to skip.
+             //   Calls Sector_SubmitObject (0x40C650) for each passing object.
+             //   GATE: (flags & 0x200000) + proximity check at 0x46B85A (PATCHED)
+@ 0x0046B890 void __cdecl Sector_RenderFullscreen(void* sectorData);
+             //   Iterates objects, filters: (flags & 0x400000) must be set, (flags & 0x20001) must be clear
+@ 0x0046C320 void __cdecl Sector_IterateMeshArray(void* meshArray, void* sceneCtx);
+             //   Iterates meshes (stride 0x70), skips if (flags+0x5C & 0x82000000) != 0
+             //   Calls MeshSubmit (0x458630) for each mesh. Called from 0x44FB60 and 0x452060.
+@ 0x00458630 int __cdecl MeshSubmit(void* meshEntry, short sectorIdx, char forceVisible);
+             //   GATE 1: MeshSubmit_VisibilityGate (0x454AB0) — PVS bitfield check
+             //     if gate returns 1, mesh already visible (skip), unless forceVisible
+             //   GATE 2: material check via 0x5D4240 — must return non-null with type==2
+             //   Sets mesh flag 0x80000000 when submitted. Many sub-operations for transform setup.
+@ 0x00454AB0 uint __cdecl MeshSubmit_VisibilityGate(void* meshEntry);
+             //   Three-tier visibility check:
+             //   1. Linked list at [0x10C5AA4]: check if meshEntry+0x54 matches [entry+0x1D0]
+             //   2. SectorCommandBuffer_Search (0x5BE540): search command buffer for mesh ID
+             //   3. SectorVisibility_BitfieldCheck (0x5BE7B0): PVS bitfield at [0x11397C0]+0x33D8
+             //   Returns 1 (already visible/reject) or 0 (not yet visible, proceed with submit)
+@ 0x005BE7B0 bool __cdecl SectorVisibility_BitfieldCheck(void* meshEntry);
+             //   Reads mesh ID from meshEntry+0x54, checks bit in PVS bitfield
+             //   Bitfield: [0x11397C0] + 0x33D8, size 0x47C bytes (9184 mesh bits)
+             //   Returns true if mesh bit is SET (mesh already in PVS)
+@ 0x005BE540 uint16_t* __cdecl SectorCommandBuffer_Search(int sectorId);
+             //   Searches command buffer at [0x11397C0]+0x3854 for matching sector ID
+@ 0x005BEE30 void __cdecl SectorVisibility_PopulateBitfield(void);
+             //   Reads mesh IDs from [0x113F854]+0x6F2 array, sets corresponding bits in PVS bitfield
+             //   Called during sector setup at 0x421058 and 0x5BFC95
+@ 0x005BFC10 uint __cdecl SectorVisibility_InitializeRenderStructure(uint param);
+             //   Copies PVS source bitfield from 0x113F3D8 into [0x11397C0]+0x33D8 (0x11F dwords)
+             //   Then calls SectorVisibility_PopulateBitfield to set dynamic mesh bits
+@ 0x005BE860 void __cdecl SectorVisibility_ClearMeshBit(int meshObj);
+             //   Clears mesh visibility bit: reads ID from meshObj+0x1D0, clears bit in PVS bitfield
+@ 0x0040C650 void __cdecl Sector_SubmitObject(void* meshBase, void* objectEntry);
+             //   GATE: [_object+0x10]==0 AND (objectEntry+0x20 >= 0 OR [_object+0x182]!=0) AND [0x10024E8]==0
+             //   Sets up matrices, builds lighting mask, calls 0x40C430 and 0x40C040 to submit
+@ 0x0040E2C0 void __cdecl PostSector_ObjectLoop(uint32_t* sectorArray);
+             //   Post-sector object iteration with distance culling.
+             //   GATE 1: [0xF12016] must be nonzero (enable flag)
+             //   GATE 2: [0x10024E8] must be zero (global render suppression)
+             //   GATE 3: per-sector visibility mask at [0xFFA718] (bit per sector)
+             //   GATE 4: Object_ComputeDistance (0x455A50) — distance culling against [0xEFDDB0]
+             //   Also checks object flags: [obj+0xA4] & 0x800, [obj+0xA8] & 0x10000
+
+// PVS (Potentially Visible Set) globals
+$ 0x11397C0 void* g_pRenderStructure
+             //   Pointer to render structure. PVS bitfield at +0x33D8 (0x47C bytes)
+$ 0x113F3D8 uint8_t g_pvsSourceBitfield[0x47C]
+             //   Source PVS bitfield, copied into render structure during sector init
+$ 0x113F854 void* g_pSectorData
+             //   Sector/level data structure. Mesh ID array at +0x6F2.
+$ 0x10C5AA4 void* g_hiddenMeshList
+             //   Linked list of explicitly hidden meshes (checked first in VisibilityGate)
+$ 0xFFA718 uint32_t g_postSectorVisibilityMask
+             //   Per-sector visibility bitmask for post-sector object loop
+$ 0x10FC920 float g_minSectorScreenWidth
+             //   Minimum screen-space width for sector to be rendered
+$ 0x10FC924 float g_minSectorScreenHeight
+             //   Minimum screen-space height for sector to be rendered
+$ 0xEFDDB0 float g_objectDistanceCullThreshold
+             //   Distance threshold for post-sector object culling
+$ 0xEFD40C float g_objectDistanceBoundary
+             //   Distance boundary value for post-sector culling formula
+$ 0xF12016 uint8_t g_postSectorEnabled
+             //   If zero, entire post-sector object loop is skipped
+
+@ 0x00450B00 void __cdecl RenderFrame(void* frameData);
+             //   735-byte mid-level render loop. CRITICAL GATE at 0x450B97: je 0x450CB0
+             //   jumps over ALL sector + scene rendering if 0x4F7410 returns 0 (level not loaded).
+             //   Calls: 0x46C4F0 (SetupCameraSector), 0x46D1D0, object loop (0x10C5AA4 linked list),
+             //   0x46C180 (SectorVisibility_RenderVisibleSectors) [PATCHED],
+             //   0x443C20 (RenderScene) [calls SceneTraversal_CullAndSubmit, PATCHED],
+             //   then post-frame work.
+             //   The sector bypass flag at 0xF17904 gates whether 0x46C180 or 0x5C3C50 is called.
+@ 0x00450DE0 void __cdecl RenderFrame_TopLevel(void* context);
+             //   Calls: 0x40CA60(1) -> RenderFrame(context) -> fade/flip.
+             //   Fade path: if g_fadeActive (0xF127B8) != 0, animates screen opacity.
+             //   Both paths call 0x415A40 (DrawPass_Gate) -> 0x415260 (DrawPass_FlushBatches) -> 0x5D42C0
+@ 0x0040CBE0 void __cdecl FadeController_RenderAndFlip(int param);
+             //   Checks g_fadeActive (0xF127B8). If fade active: interpolates fade value.
+             //   Then: sets g_fadeAlpha (0xF127D4) and calls DrawPass_Gate -> 0x5D42C0 -> SubmitMesh_Generic(0x604BE0)
+             //   32 callers across game loop, loading screens, menu transitions.
+             //   Return address 0x40CD1A is from 0x5D42C0 call (NOT from DrawIndexedPrimitive).
+@ 0x00415A40 void __cdecl DrawPass_Gate(void);
+             //   GATE 1: if g_drawSubmitReady (0x10024F4) == 0, returns immediately (no draws)
+             //   GATE 2: if g_drawSubmitMode (0x10024E8) != 0, calls 0x419160 instead of flush
+             //   Normal path: calls 0x40E970 (clears draw state) -> DrawPass_FlushBatches (0x415260)
+             //   -> 0x418AE0 (finalize) -> 0x4150F0 (tail call)
+             //   g_drawSubmitReady set to 1 by BeginDrawPass (0x414940) during RenderFrame
+@ 0x00415260 void __cdecl DrawPass_FlushBatches(void);
+             //   2003-byte draw flush function. Iterates queued draw batches and calls
+             //   EC9320 (DrawBatch_Execute) for each batch. Uses global batch lists at
+             //   0x1002484..0x10024B8 (multiple render queues: opaque, alpha, fog, etc.)
+             //   Return addresses 0x415613 and 0x415654 are from EC9320 calls (DrawIndexedPrimitive)
+             //   within this function. These draws are NOT gated here — they were queued upstream
+             //   by SceneTraversal, SectorVisibility, and PostSector_ObjectLoop during RenderFrame.
+@ 0x00EC9320 int* __thiscall DrawBatch_Execute(void* this, uint param, int* prevShader);
+             //   Iterates linked list at [this+8]. Per entry: activates shader if changed (vtable calls),
+             //   then dispatches draw via vtable[4](param, prevEntry). This is the final draw submission
+             //   that issues DrawIndexedPrimitive to D3D9.
+@ 0x00414940 void __cdecl BeginDrawPass(int doSetup);
+             //   Called at start of each render frame. Sets g_drawSubmitReady (0x10024F4) = 1.
+             //   When g_drawSubmitMode (0x10024E8) != 0: calls 0x419140 then sets flag and returns.
+             //   When mode == 0: initializes all draw batch lists, render state, and flush buffers.
+@ 0x004F7410 char __cdecl IsLevelRenderable(void);
+             //   Returns nonzero if a level is loaded and renderable.
+             //   Checks global object count at _fails > 0, then walks state array 0x1116158.
+             //   If all entries have bit 27 or 28 set, returns 0 (not renderable).
+             //   Fallback: returns (loadDoneType != 7).
+@ 0x00452510 void __cdecl RenderScene_FullPipeline(void* context);
+             //   Outer render pipeline: calls 0x4E0690 (BeginScene?), 0x452140 (setup),
+             //   SubmitMesh_Generic, 0x5D51C0, then RenderFrame_TopLevel(context), then 0x450E80 (post-frame)
+             //   Called from 0x45DA5D inside GameLoop_Render (0x45CF80)
+@ 0x0045CF80 void __cdecl GameLoop_Render(void);
+             //   3715-byte main game loop render orchestrator. Called from WinMain (0x401F50).
+             //   Contains the 0x45DA5D call to RenderScene_FullPipeline which is the primary game render path.
+             //   Also manages scene transitions, camera setup, state blocks, and calls 0x452510.
+@ 0x00415A40 void __cdecl Renderer_InitAndDraw(void);
+             //   Checks g_renderNeedsInit (0x10024F4), calls 0x415260 (Renderer_DrawPass),
+             //   then 0x4150F0 (Renderer_SetupBaseStates). Called from 0x40CBE0 fade controller.
+@ 0x00415260 void __cdecl Renderer_DrawPass(void);
+             //   2003-byte renderer draw pass. Sets up D3D render targets, frustum distance,
+             //   uploads VS constants (c0-c15), sets sampler states, calls all render targets.
+             //   Vtable calls at +0xE4 (SetRenderState), +0x10 (render target), +0xAC (SetSamplerState).
+             //   Calls 0x0040EA60, 0x0040E9C0, 0x0040E580, 0x618450/0x618470 (light render),
+             //   0x0040EAB0 (Renderer_ApplyRenderStateChanges), 0xEC9320/EC9710 (VS constant ops).
+@ 0x0040CBE0 void __cdecl FadeController_DrawScene(int fadeMode);
+             //   32 callers. Manages screen fade animation using globals at 0xF127B8-0xF127D4.
+             //   Sets g_fadeTargetAlpha (0xF127D4) then calls 0x415A40 -> 0x415260 -> draw pass.
+             //   Also calls 0x5D42C0 (post-draw cleanup). Critical link in ALL render dispatch paths.
 @ 0x00442D40 void __cdecl RenderScene_PostProcess(void* data);  // called after scene traversal
 @ 0x00402B10 void __cdecl CopyMatrixToGlobal(void* srcMatrix);  // copies 4x4 matrix to g_cameraMatrix (0xF3C5C0)
 @ 0x00407010 void __fastcall ComputeProjectedSize(void* sizeParams);  // computes screen-space projection, clamps to bounds
@@ -271,6 +442,9 @@ $ 0x00F127E4 uint g_lastTextureStageStateMask
 $ 0x00FFA720 uint g_currentDesiredRenderStates  // bitfield: bit21=cullmode, bit20=zwrite, bit12=alphatest, etc.
 $ 0x013107F4 int g_deferredLightCount         // count of lights deferred by frustum cull
 $ 0x013107F8 int g_deferredLightCapacity      // capacity of deferred light array
+$ 0x010024E8 int g_drawSubmitLock             // when non-zero, Sector_SubmitObject skips ALL submissions (gate at 0x40C68B)
+$ 0x010E5384 int g_renderPassState            // render pass flags; bits 8-15 checked in sector skip at 0x46B7EA
+$ 0x010E5438 void* g_currentSectorPtr         // current sector pointer; compared at 0x46B7F2 to skip already-rendered sector
 $ 0x013107FC int* g_deferredLightIndices      // pointer to array of deferred light indices
 $ 0x01310800 int g_deferredLightInitFlag       // bit 0: set once during first RenderLights call
 $ 0x010E537C void* g_pCurrentScene             // current scene/level object pointer
@@ -283,8 +457,18 @@ $ 0x01089E44 void* g_pSpecialRenderCallback2   // if non-null, calls 0x4495C0 af
 // ============================================================
 
 // Sector table: 8 entries of 0x5C bytes at fixed address
-// Per entry: [+0]=sectorIndex(dword), [+4]=type(byte, 2=active), [+5]=flags(byte, bit3=visible)
-// [+0x37..0x3D]=bounding box (4 shorts: x,y,w,h), [+0x3F]=sectorType(dword, 1=standard, 2=fullscreen)
+// Per entry layout:
+//   [+0x00] dword  sectorIndex
+//   [+0x04] byte   sectorState (0=free, 1=loading, 2=loaded, 4=dumping)
+//   [+0x05] byte   flags1
+//   [+0x06] byte   flags2 (bit 3 = loaded/visible, set by Sector_Activate 0x403720)
+//   [+0x08] ptr    sectorDataPtr
+//   [+0x3C] word   boundX (screen-space bounding rect left)
+//   [+0x3E] word   boundY (screen-space bounding rect top)
+//   [+0x40] word   boundW (screen-space width, SIGNED — negative = invisible)
+//   [+0x42] word   boundH (screen-space height, SIGNED — negative = invisible)
+//   [+0x43] dword  sectorType (1=standard mesh, 2=fullscreen overlay)
+//   [+0x44] dword  portalFlags (OR'd from portal visibility results each frame)
 $ 0x011582F8 char[0x2E0] g_sectorTable       // 8 sector entries, 0x5C bytes each
 $ 0x010C5AA4 void* g_pObjectListHead          // head of active scene object linked list (next at +8)
 $ 0x010E5384 uint32 g_renderFlags             // bit 20 = skip entire object loop rendering
@@ -298,6 +482,20 @@ $ 0x010E579C void* g_pCameraOverrideObj       // camera override object (vtable[
 $ 0x00FFA718 uint32 g_postSectorVisibilityMask  // bitmask: bit N = post-sector object N is visible
 $ 0x00F17904 byte g_sectorBypassFlag           // if set, 0x5C3C50 called instead of RenderVisibleSectors
 $ 0x010E5424 int g_frameCounter                // incremented each RenderFrame call
+$ 0x010024F4 int g_drawSubmitReady             // 1 = draw batches ready to flush, 0 = skip. Set by BeginDrawPass (0x414940)
+$ 0x010024E8 int g_drawSubmitMode              // 0 = normal render, nonzero = special mode (0x419160 path)
+$ 0x00F127B8 int g_fadeActive                  // nonzero = screen fade in progress
+$ 0x00F127D4 int g_fadeAlpha                   // current fade alpha (0x80 = fully opaque)
+$ 0x00F127C8 float g_fadeDelta                 // fade speed/direction
+$ 0x00F127B8 int g_fadeActive                  // nonzero = fade animation in progress
+$ 0x00F127BC int g_fadeCurrentAlpha            // current alpha level (0-128, 0x80=fully opaque)
+$ 0x00F127C0 int g_fadeTargetAlpha             // target alpha level for fade
+$ 0x00F127C4 int g_fadeDeltaAccum             // accumulated fade delta from frame timing
+$ 0x00F127C8 float g_fadeRateMultiplier       // fade speed multiplier
+$ 0x00F127CC float g_fadeProgress             // current fade progress (float)
+$ 0x00F127D4 int g_fadeTargetOpacity          // target opacity set by FadeController (0x80=normal)
+$ 0x010024F4 int g_renderNeedsInit            // if set, Renderer_InitAndDraw reinits before drawing
+$ 0x010024E8 int g_postDrawMode               // if nonzero, uses alternate post-draw path (0x419160 vs 0x40E970)
 $ 0x01117560 void* g_pCutsceneObject           // if non-null, calls 0x44B7A0 for cutscene rendering
 $ 0x0010024E8 int g_postSectorLoopDisable      // if non-zero, post-sector object loop at 0x40E2C0 is skipped
 $ 0x00EFDE58 float g_maxObjectDrawDistance     // max draw distance for post-sector objects
@@ -322,8 +520,33 @@ $ 0x011397CC void* g_pSectorCommandBufferEnd   // end pointer for sector command
              //   Alternate sector render for type 2 (fullscreen) sectors.
 @ 0x0046C320 void __cdecl Sector_IterateMeshArray(void* meshArray, void* sceneCtx);
              //   Iterates mesh array, checks [mesh+0x5C]&0x82000000 cull flags. Calls 0x458630.
-@ 0x0046C4F0 void __cdecl SetupCameraSector(void* sceneData);
-             //   Builds camera frustum from camera's current sector. Accesses g_pCurrentScene and g_pPlayerCamera.
+@ 0x0046C4F0 void __cdecl SetupCameraSector(void* sectorEntry);
+             //   Portal walk from camera's sector. Iterates portal connection array
+             //   (stride 0xA0, count at *(*sectorData+0xC), entries at *(*sectorData+0x10)).
+             //   Per portal: checks connected sector loaded/active, dot product vs portal plane,
+             //   2D rect clipping. For visible portals: computes screen-space bounding rect
+             //   in sector[+0x3C..+0x42]. Unreachable sectors keep default (negative) bounds.
+@ 0x0046D1D0 void __cdecl SectorPortalVisibility(void* sectorEntry);
+             //   Called after SetupCameraSector, before RenderVisibleSectors.
+             //   RESETS all 8 sector bounding rects to x=0x200, y=0x1C0, w=-512, h=-448
+             //   (making unreachable sectors fail the width/height check).
+             //   Then for portal-visible sectors: ORs portal results into sector[+0x44].
+             //   PATCH TARGET: 0x46D1E0/E5/EA — change negative width/height defaults to
+             //   positive fullscreen values (x=0, w=0x200, h=0x1C0) to force all sectors visible.
+@ 0x0046D0A0 bool __cdecl PortalVisibilityTest(void* portalEntry, void* boundsRect);
+             //   Dot product of camera position vs portal plane normal.
+             //   Returns false if camera is behind portal, true if in front.
+@ 0x0046C360 int __cdecl PortalRectClip(void* portalGeom, void* clipRect);
+             //   2D portal rectangle clipping against current frustum scissor.
+@ 0x00403720 void __cdecl Sector_ActivateAndResolveTextures(void* sectorEntry);
+             //   Sets sector[+6] |= 8 (loaded/visible flag). Resolves texture references
+             //   via lookup table at 0xF3C600. Called from sector load finalization (0x5D59D7).
+@ 0x0046B900 void __cdecl Sector_GetCameraFrustumParams(void* sectorEntry, ...);
+             //   Extracts camera frustum near/far planes and fog parameters from sector data.
+@ 0x00450B00 void __cdecl RenderFrame(void);
+             //   Main render pipeline: GetCameraSector -> SetupCameraSector -> SectorPortalVisibility
+             //   -> object loop -> RenderVisibleSectors (0x46C180) -> RenderScene (0x443C20).
+             //   Controls sector bypass via g_sectorBypassFlag (0xF17904).
 @ 0x00450A80 void* __cdecl GetCameraSector(void);
              //   Returns sector data for camera position. Uses g_pCameraOverrideObj vtable[0x28],
              //   or falls back to Sector_FindByIndex via player struct sector index at +0xB2.
@@ -353,6 +576,30 @@ $ 0x011397CC void* g_pSectorCommandBufferEnd   // end pointer for sector command
              //   Computes distance from camera to object, used by post-sector distance culling
 @ 0x00531B10 int __cdecl Object_HasComponentType(void* obj, short typeId);
              //   Checks [obj+0x1C0] for magic 0xB00B at word[+4] and matching typeId at word[+2].
+
+// ============================================================
+// Scene Graph (Path 2 — effects/particles/billboards, NOT sector meshes)
+// ============================================================
+// Scene graph root at 0x107F6B8 has three linked lists:
+//   +0x24: mesh effect nodes (walked by SceneTraversal loop 1)
+//   +0x2c: billboard/sprite nodes (walked by SceneTraversal loop 2)
+//   +0x34: scene objects (walked by SceneGraphBuilder 0x408130)
+// Node layout: [+0]=listPtr, [+4]=next, [+8]=flags, [+0xC]=meshID,
+//   [+0x10..+0x1C]=position, [+0x20..+0x3C]=bounding box, [+0x3C]=color
+$ 0x0107F6B8 void* g_sceneGraphRoot      // scene graph root, passed to RenderScene
+@ 0x00443C20 void __cdecl RenderScene(void* sceneData, void* cameraMatrix);
+             //   Copies camera matrix, calls SceneTraversal_CullAndSubmit, then post-processing.
+@ 0x00436AF0 void __cdecl SceneGraphBuilder(void* sceneGraph, void* cameraMatrix);
+             //   If sceneGraph+0x34 list non-empty, calls SceneObjectWalker (0x408130).
+@ 0x00408130 void __cdecl SceneObjectWalker(void* cameraMatrix, void* sceneGraph);
+             //   Walks scene object list at sceneGraph+0x34. Per object: frustum cull,
+             //   matrix setup, lighting, then submits via 0x408CC0 or async path.
+@ 0x00436110 void* __cdecl SceneNodeAllocator(void* sceneGraph);
+             //   Allocates scene node from free list at sceneGraph+0x38, fallback to sceneGraph+0x40.
+@ 0x0045BD30 void __cdecl ListLinker(void* listHead, void* node);
+             //   Inserts node into doubly-linked list. node[0]=listHead, node[1]=next, updates prev.
+@ 0x0045BDA0 void* __cdecl ListUnlinker(void* listHead);
+             //   Removes first node from doubly-linked list, returns it.
 
 // ============================================================
 // Render state bitfield (ebp in ApplyRenderStateChanges)
@@ -439,3 +686,117 @@ $ 0xEFDDD0 const char* g_szOutOfTransientHeap = "Out of transient heap space!"
              //   tests bit in 0x47C-byte bitfield at [0x11397C0+0x33D8].
              //   Returns 1 if bit SET (sector already rendered = cull to avoid double-draw).
              //   Returns 0 if bit CLEAR (sector unvisited = should draw).
+
+// ============================================================
+// Streaming / Object Tracker System
+// ============================================================
+// Object Tracker: 94 entries (MAX_OBJECTS=0x5E) at 0x11585D8, stride 0x24
+// States: 0=free, 1=loading, 2=loaded(drawable), 3=marked-evict, 4=evicting, 5=freed
+// Sector Table: 8 entries at 0x11582F8, stride 0x5C
+// Sector states: 0=free, 1=loading, 2=loaded, 4=dumping
+// Sector +0x06 bit 0 = KEEP_LOADED (protects from eviction by SectorEviction_ScanAndUnload)
+
+struct ObjectTrackerEntry {
+    uint32_t loadHandle;        // +0x00
+    uint32_t resourceHash;      // +0x04
+    void* objectData;           // +0x08  mesh header, materials, textures
+    int16_t resourceKey;        // +0x0C  index into resource map at [0x10EFC90]
+    int16_t state;              // +0x0E  0=free, 1=loading, 2=loaded, 3=evict, 5=freed
+    uint32_t refCount;          // +0x10
+    int8_t depCount;            // +0x12  dependency count
+    int8_t deps[17];            // +0x13  dependency indices
+};  // total 0x24 bytes
+
+@ 0x005D5390 int __cdecl ObjectTracker_FindOrLoad(int resourceKey, void* gameTracker, int param3);
+             //   Main object lookup. Searches 94-entry table at 0x11585D8.
+             //   If not found, initiates async load via AsyncLoader_StartLoad (0x5BADD0).
+             //   When tracker is full, calls ObjectTracker_EvictUnneeded (0x5D44C0) to free slots.
+             //   Returns tracker index (0..93) or -1 on failure.
+             //   MAX_OBJECTS limit checked at: 0x5D53F2, 0x5D53FA, 0x5D5424, 0x5D542F,
+             //   0x5D5459, 0x5D5464, 0x5D5481, 0x5D55AC (all cmp reg, 0x5E)
+@ 0x005D4240 int __cdecl ObjectTracker_Resolve(int resourceKey, int param2);
+             //   Returns pointer to object data (entry_base + index * 0x24 + 0x11585D8)
+             //   or 0 if not found. MeshSubmit checks return + 0x0E == 2 (loaded state).
+@ 0x005D44C0 void __cdecl ObjectTracker_EvictUnneeded(void* sectorEntry);
+             //   Marks unreferenced objects as state 3, then frees them via ObjectTracker_FreeEntry.
+             //   Eviction criteria: state==2, not used this frame, not in dependency list,
+             //   not in g_hiddenMeshList or active scene list.
+             //   9 call sites across game code. Key site: 0x5D5436 (inside FindOrLoad when full).
+@ 0x005D4380 void __cdecl ObjectTracker_FreeEntry(void* entry);
+             //   Releases object data, removes dependencies, sets state to 5 then 0.
+@ 0x005D5200 void __cdecl ObjectTracker_LoadComplete(void* objectData, void* trackerEntry);
+             //   Async load completion callback. Sets entry state to 2 (loaded/drawable).
+             //   Validates model version magic 0x4C20453, resolves dependencies.
+@ 0x005D4F30 void __cdecl SectorEviction_ScanAndUnload(void);
+             //   Iterates all 8 sector entries. Unloads any sector where:
+             //   state != 0 AND state != 4 AND lastFrameAccessed != g_frameCounter
+             //   AND (flags & 1) == 0 (not keep-loaded).
+             //   Called from: 0x5D31D9 and 0x5D5F59 (during level transitions).
+             //   PATCH: NOP both call sites to prevent sector eviction.
+@ 0x005D4DA0 void __cdecl Sector_Unload(void* sectorEntry, char preserveData);
+             //   Unloads a single sector: clears dependencies, frees resources,
+             //   sets sector state to 4 (dumping).
+@ 0x005D5B60 void* __cdecl Sector_LoadOrFind(char* name, void* param2, char keepLoaded);
+             //   Finds existing sector by name or allocates new slot and initiates async load.
+             //   Sets sector state to 1 (loading), flags, copies name to entry.
+@ 0x005D5D80 void __cdecl Sector_WaitForLoad(void* sectorEntry, char doFinalSetup);
+             //   Blocks until sector async load completes (spins with 5ms Sleep).
+@ 0x005C3C20 void __cdecl StreamUnitDataLoaded(void* streamUnit);
+             //   Callback when stream unit data finishes loading from BIGFILE.DAT.
+@ 0x005C2010 void __cdecl StreamUnitDataDumped(void* streamUnit);
+             //   Callback when stream unit data is evicted/dumped.
+@ 0x005BADD0 int __cdecl AsyncLoader_StartLoad(void* params);
+             //   Initiates async file read from BIGFILE.DAT.
+@ 0x005D4470 char __cdecl ObjectTracker_IsReferencedBySector(void* entry);
+             //   Checks if object is referenced by any loaded sector dependency list.
+             //   Returns 1 if referenced (protected from eviction), 0 if orphaned.
+
+$ 0x011585D8 ObjectTrackerEntry g_objectTracker[94]
+             //   Object tracker table. 94 entries x 0x24 bytes = 0x870 bytes.
+             //   Immediately followed by data at 0x1159310.
+$ 0x010EFC90 void* g_resourceMap
+             //   Resource key -> tracker index mapping. [key*8] = tracker index, [key*8+4] = hash.
+$ 0x01159314 void* g_sectorObjectMapping
+             //   Maps sector indices to object tracker entries.
+$ 0x010E5424 int g_frameCounter
+             //   Incremented each frame. Used for LRU eviction in sector/object systems.
+$ 0x01140890 void* g_asyncLoaderVtable
+             //   Async loader vtable pointer (used in StreamUnitDataLoaded).
+$ 0x011408C0 int g_pendingLoadCount
+             //   Number of pending cross-sector load operations.
+$ 0x011408C8 void** g_pendingLoadArray
+             //   Array of pending cross-sector load entries.
+$ 0x01140898 int g_streamLoadCompleteFlag
+             //   Set to 1 when stream unit data loading completes.
+
+// ============================================================
+// Game Loop / Level Loading
+// ============================================================
+// GameTracker struct lives at 0x010E5370 (global, ~2KB+)
+//   +0xC0: flags (bit 0 = level change requested)
+//   +0xCC: char[?] levelName (destination level name buffer)
+//   +0xE1: char busy flag (if nonzero, level change is rejected)
+
+$ 0x010E5370 GameTracker gameTracker
+$ 0x010E5430 uint32_t gameTrackerFlags
+$ 0x010E5434 uint32_t gameTrackerFlags2
+$ 0x010E5450 int loadDoneType
+$ 0x010E5451 char loadState
+
+@ 0x00451970 void __cdecl GAMELOOP_RequestLevelChangeByName(char* name, GameTracker* gameTracker, int doneType);
+@ 0x00451870 void __cdecl GAMELOOP_SetLoadDoneType(int doneType);
+@ 0x005C9A40 void __cdecl GAMELOOP_ResetSomething(void);
+@ 0x00452900 void __cdecl GAMELOOP_SetStateVar(int index, uint32_t value, char callHandler);
+
+// ============================================================
+// CRT Functions (MSVC statically linked)
+// ============================================================
+@ 0x00EE8383 int __cdecl _output(void* stream, char* format, va_list argptr);
+@ 0x00EE534E int __cdecl sprintf(char* buf, char* format, ...);
+@ 0x00EE52F5 int __cdecl sprintf_variant(char* buf, char* format, ...);
+@ 0x00EE6724 int __cdecl _snprintf(char* buf, int maxlen, char* format, ...);
+@ 0x00EE7043 int __cdecl _vsnprintf(char* buf, int maxlen, char* format, va_list argptr);
+
+$ 0x00F2B3F8 char* g_null_string_narrow
+$ 0x00F2B3FC wchar_t* g_null_string_wide
+$ 0x00F0A398 uint8_t _chartype_table[256]

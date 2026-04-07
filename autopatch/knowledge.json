@@ -1,8 +1,3054 @@
 {
-  "iterations": [],
+  "iterations": [
+    {
+      "id": "iter_045",
+      "timestamp": 1775337957.9658735,
+      "hypothesis_id": "H099",
+      "description": "NOP 2-byte jbe at 0x40ac7c (near caller 0x0040AC5B)",
+      "target_addr": 4238460,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.055509988218545914,
+      "notes": "red=[False, True, False] green=[False, False, False]"
+    },
+    {
+      "id": "iter_046",
+      "timestamp": 1775377363.072609,
+      "hypothesis_id": "H100",
+      "description": "NOP 2-byte jb at 0x40aca6 (near caller 0x0040AC5B)",
+      "target_addr": 4238502,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": true,
+      "confidence": 1.0,
+      "notes": "Game failed to launch"
+    },
+    {
+      "id": "iter_047",
+      "timestamp": 1775388703.5694897,
+      "hypothesis_id": "H106",
+      "description": "NOP 2-byte jle at 0x40ccc2 (near caller 0x0040CD1A)",
+      "target_addr": 4246722,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.5923871397972107,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_048",
+      "timestamp": 1775388818.887573,
+      "hypothesis_id": "H131",
+      "description": "NOP 2-byte jl at 0x4524d3 (near caller 0x00452530)",
+      "target_addr": 4531411,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.5692480206489563,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_049",
+      "timestamp": 1775388934.1486723,
+      "hypothesis_id": "H118",
+      "description": "NOP 2-byte je at 0x41565a (near caller 0x00415654)",
+      "target_addr": 4281946,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.6155208349227905,
+      "notes": "red=[True] green=[False]"
+    },
+    {
+      "id": "iter_050",
+      "timestamp": 1775389049.0572085,
+      "hypothesis_id": "H120",
+      "description": "NOP 2-byte je at 0x41596f (near caller 0x00415969)",
+      "target_addr": 4282735,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.5517111420631409,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_051",
+      "timestamp": 1775389164.3662307,
+      "hypothesis_id": "H133",
+      "description": "NOP 6-byte je at 0x45da6c (near caller 0x0045DA62)",
+      "target_addr": 4577900,
+      "patch_bytes": "909090909090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.5437728762626648,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_052",
+      "timestamp": 1775389279.3778658,
+      "hypothesis_id": "H126",
+      "description": "NOP 2-byte jne at 0x415a79 (near caller 0x00415A6D)",
+      "target_addr": 4283001,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.5984939336776733,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_053",
+      "timestamp": 1775389394.322386,
+      "hypothesis_id": "H144",
+      "description": "NOP 2-byte jae at 0x5dab8d (near caller 0x005DAC04)",
+      "target_addr": 6138765,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.6000520586967468,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_054",
+      "timestamp": 1775389509.3117943,
+      "hypothesis_id": "H157",
+      "description": "NOP 2-byte jne at 0xeeaca8 (near caller 0x00EEACBB)",
+      "target_addr": 15641768,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.557875394821167,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_055",
+      "timestamp": 1775410081.5871158,
+      "hypothesis_id": "H114",
+      "description": "NOP 6-byte jle at 0x40cd47 (near caller 0x0040CD1A)",
+      "target_addr": 4246855,
+      "patch_bytes": "909090909090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.24019956588745117,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_056",
+      "timestamp": 1775410150.8860064,
+      "hypothesis_id": "H143",
+      "description": "NOP 2-byte jae at 0xee7428 (near caller 0x00EE74A0)",
+      "target_addr": 15627304,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.23601999878883362,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_057",
+      "timestamp": 1775410217.7336257,
+      "hypothesis_id": "H122",
+      "description": "NOP 2-byte je at 0x415a5a (near caller 0x00415A6D)",
+      "target_addr": 4282970,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": true,
+      "confidence": 0.962890625,
+      "notes": "Game crashed during evaluation"
+    },
+    {
+      "id": "iter_058",
+      "timestamp": 1775410288.9180849,
+      "hypothesis_id": "H128",
+      "description": "NOP 2-byte je at 0x45da79 (near caller 0x0045DA62)",
+      "target_addr": 4577913,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.2409820407629013,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_059",
+      "timestamp": 1775410358.5588825,
+      "hypothesis_id": "H139",
+      "description": "NOP 2-byte je at 0x5dabeb (near caller 0x005DAC04)",
+      "target_addr": 6138859,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.2450314313173294,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_060",
+      "timestamp": 1775410427.890264,
+      "hypothesis_id": "H150",
+      "description": "NOP 2-byte jne at 0xeeacd6 (near caller 0x00EEACBB)",
+      "target_addr": 15641814,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.2381163239479065,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_061",
+      "timestamp": 1775410497.80142,
+      "hypothesis_id": "H117",
+      "description": "NOP 2-byte je at 0x41562b (near caller 0x00415654)",
+      "target_addr": 4281899,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.23663955926895142,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_062",
+      "timestamp": 1775410568.6891549,
+      "hypothesis_id": "H100",
+      "description": "NOP 2-byte jne at 0x402324 (near caller 0x0040235A)",
+      "target_addr": 4203300,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.24077583849430084,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_063",
+      "timestamp": 1775410641.105886,
+      "hypothesis_id": "H119",
+      "description": "NOP 2-byte je at 0x4159a1 (near caller 0x00415969)",
+      "target_addr": 4282785,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.24638999998569489,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_064",
+      "timestamp": 1775410710.889957,
+      "hypothesis_id": "H108",
+      "description": "NOP 2-byte jne at 0x402324 (near caller 0x00402361)",
+      "target_addr": 4203300,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.2526193857192993,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_065",
+      "timestamp": 1775411049.5275562,
+      "hypothesis_id": "H118",
+      "description": "NOP 2-byte jl at 0x40ccab (near caller 0x0040CD1A)",
+      "target_addr": 4246699,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.238746777176857,
+      "notes": "red=[True, True, True] green=[False, False, False]"
+    },
+    {
+      "id": "iter_066",
+      "timestamp": 1775426663.616811,
+      "hypothesis_id": "H142",
+      "description": "NOP 2-byte jae at 0xee7423 (near caller 0x00EE74A0)",
+      "target_addr": 15627299,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.96,
+      "notes": "red+green not persistent (user manual test)"
+    },
+    {
+      "id": "iter_067",
+      "timestamp": 1775426668.9131386,
+      "hypothesis_id": "H142",
+      "description": "NOP 2-byte jae at 0xee7423 (near caller 0x00EE74A0)",
+      "target_addr": 15627299,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.96,
+      "notes": "red+green not persistent (user manual test)"
+    },
+    {
+      "id": "iter_068",
+      "timestamp": 1775427227.2889597,
+      "hypothesis_id": "H125",
+      "description": "NOP 2-byte jne at 0x415a85 (near caller 0x00415A6D)",
+      "target_addr": 4283013,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.95,
+      "notes": "red+green not persistent (user manual test)"
+    },
+    {
+      "id": "iter_069",
+      "timestamp": 1775427269.1617064,
+      "hypothesis_id": "H124",
+      "description": "NOP 2-byte je at 0x415a47 (near caller 0x00415A6D)",
+      "target_addr": 4282951,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.93,
+      "notes": "red+green not persistent (user manual test)"
+    },
+    {
+      "id": "iter_070",
+      "timestamp": 1775427311.2832274,
+      "hypothesis_id": "H149",
+      "description": "NOP 2-byte je at 0xeeace8 (near caller 0x00EEACBB)",
+      "target_addr": 15641832,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.91,
+      "notes": "red+green not persistent (user manual test)"
+    },
+    {
+      "id": "iter_071",
+      "timestamp": 1775427341.6995752,
+      "hypothesis_id": "H148",
+      "description": "NOP 2-byte je at 0xeeac8b (near caller 0x00EEACBB)",
+      "target_addr": 15641739,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.91,
+      "notes": "red+green not persistent (user manual test)"
+    },
+    {
+      "id": "iter_072",
+      "timestamp": 1775427465.5844288,
+      "hypothesis_id": "H144",
+      "description": "NOP 2-byte jne at 0xee746b (near caller 0x00EE74A0)",
+      "target_addr": 15627371,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.9,
+      "notes": "fail (user manual test)"
+    },
+    {
+      "id": "iter_073",
+      "timestamp": 1775427512.481192,
+      "hypothesis_id": "H120",
+      "description": "NOP 2-byte jne at 0x40ccdc (near caller 0x0040CD1A)",
+      "target_addr": 4246748,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.88,
+      "notes": "fail (user manual test)"
+    },
+    {
+      "id": "iter_074",
+      "timestamp": 1775463286.0792778,
+      "hypothesis_id": "H147",
+      "description": "NOP 2-byte jae at 0xee599e (near caller 0x00EE5A51)",
+      "target_addr": 15620510,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": true,
+      "confidence": 0.850390625,
+      "notes": "Game crashed during evaluation"
+    },
+    {
+      "id": "iter_075",
+      "timestamp": 1775465329.8463974,
+      "hypothesis_id": "H150",
+      "description": "NOP 2-byte jne at 0xee5a04 (near caller 0x00EE5A51)",
+      "target_addr": 15620612,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.06918401271104813,
+      "notes": "red=[True, False, False] green=[False, False, False]"
+    },
+    {
+      "id": "iter_076",
+      "timestamp": 1775465402.5200064,
+      "hypothesis_id": "H153",
+      "description": "NOP 2-byte jne at 0xeeac6e (near caller 0x00EEACBB)",
+      "target_addr": 15641710,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.3797037899494171,
+      "notes": "red=[False, True, False] green=[False, False, False]"
+    },
+    {
+      "id": "iter_077",
+      "timestamp": 1775465475.567612,
+      "hypothesis_id": "H147",
+      "description": "NOP 2-byte jae at 0xee5995 (near caller 0x00EE5A51)",
+      "target_addr": 15620501,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.16433486342430115,
+      "notes": "red=[False, True, False] green=[False, False, False]"
+    },
+    {
+      "id": "iter_078",
+      "timestamp": 1775465549.0558984,
+      "hypothesis_id": "H127",
+      "description": "NOP 2-byte jne at 0x40ccbe (near caller 0x0040CD1A)",
+      "target_addr": 4246718,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.43417754769325256,
+      "notes": "red=[True, True, False] green=[False, False, False]"
+    },
+    {
+      "id": "iter_079",
+      "timestamp": 1775465622.4313414,
+      "hypothesis_id": "H142",
+      "description": "NOP 2-byte ja at 0x5dab3f (near caller 0x005DAC04)",
+      "target_addr": 6138687,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.22628144919872284,
+      "notes": "red=[False, True, False] green=[False, False, False]"
+    },
+    {
+      "id": "iter_080",
+      "timestamp": 1775465674.8614552,
+      "hypothesis_id": "H130",
+      "description": "NOP 2-byte je at 0x4156b8 (near caller 0x00415654)",
+      "target_addr": 4282040,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": true,
+      "confidence": 0.8046875,
+      "notes": "Game crashed during evaluation"
+    },
+    {
+      "id": "iter_081",
+      "timestamp": 1775465749.0756454,
+      "hypothesis_id": "H117",
+      "description": "NOP 2-byte jne at 0x4022f5 (near caller 0x0040235A)",
+      "target_addr": 4203253,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.6009060144424438,
+      "notes": "red=[True, True, False] green=[False, False, False]"
+    },
+    {
+      "id": "iter_082",
+      "timestamp": 1775465820.6907794,
+      "hypothesis_id": "H124",
+      "description": "NOP 2-byte jne at 0x4022f5 (near caller 0x00402361)",
+      "target_addr": 4203253,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.3082074522972107,
+      "notes": "red=[True, True, False] green=[False, False, False]"
+    },
+    {
+      "id": "iter_083",
+      "timestamp": 1775465891.802894,
+      "hypothesis_id": "H133",
+      "description": "NOP 2-byte jne at 0x4524b8 (near caller 0x00452530)",
+      "target_addr": 4531384,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.765625,
+      "notes": "No screenshots captured"
+    },
+    {
+      "id": "iter_084",
+      "timestamp": 1775465963.5410242,
+      "hypothesis_id": "H135",
+      "description": "NOP 2-byte jne at 0x45dada (near caller 0x0045DA62)",
+      "target_addr": 4578010,
+      "patch_bytes": "9090",
+      "patch_type": "runtime",
+      "passed": false,
+      "crashed": false,
+      "confidence": 0.1778537631034851,
+      "notes": "red=[False, True, False] green=[False, False, False]"
+    }
+  ],
   "confirmed_patches": [],
   "blacklisted_addrs": [],
-  "diagnostic_results": [],
+  "diagnostic_results": [
+    {
+      "timestamp": 1775268985.8765695,
+      "near_frame": "C:\\Users\\skurtyy\\Documents\\GitHub\\AlmightyBackups\\NightRaven1\\Vibe-Reverse-Engineering-Claude\\autopatch\\diagnostic_captures\\near_frame.jsonl",
+      "far_frame": "C:\\Users\\skurtyy\\Documents\\GitHub\\AlmightyBackups\\NightRaven1\\Vibe-Reverse-Engineering-Claude\\autopatch\\diagnostic_captures\\far_frame.jsonl",
+      "total_missing_draws": 93,
+      "missing_draws": [
+        {
+          "seq_near": 40,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 81,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00415613",
+            "0x54E43437"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 8163
+        },
+        {
+          "seq_near": 43,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 82,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00452530",
+            "0x0045DA62"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 8163
+        },
+        {
+          "seq_near": 45,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 9,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCCB6DE",
+            "0x7CCC4E7C",
+            "0x7CCC4E03",
+            "0x54E4679E",
+            "0x00EEACBB"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 8163
+        },
+        {
+          "seq_near": 63,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 1,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4E03",
+            "0x00415654",
+            "0x54E43437",
+            "0x54E433D4"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 65,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 42,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 66,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 136,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 67,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 124,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x005DD088",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 68,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 196,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AC933C",
+            "0x750E68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 69,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 85,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x005DD088",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 70,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 15,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AC933C",
+            "0x750E68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 71,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 85,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x005DD088",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 72,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 220,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AC933C",
+            "0x750E68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 73,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 150,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x005DD088",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 74,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 170,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AC933C",
+            "0x750E68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 76,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 75,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 7438
+        },
+        {
+          "seq_near": 82,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 1,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00402361",
+            "0x77AE0088"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 84,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 64,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AC933C",
+            "0x750E68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 85,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 81,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 86,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 82,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00EEACBB",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 87,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 153,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AC933C",
+            "0x750E68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 88,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 142,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00EEACBB",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 89,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 171,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AC933C",
+            "0x750E68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 90,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 43,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00EEACBB",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 91,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 149,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AC933C",
+            "0x750E68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 93,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 69,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x54E4679E",
+            "0x00ECBA5D",
+            "0x0040AC5B",
+            "0x7CCC38CA"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 94,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 77,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00EEACBB",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 97,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 61,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00402361",
+            "0x77AE0088"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 98,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 73,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 99,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 149,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00EEACBB",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 101,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 51,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x54E4679E",
+            "0x00ECBA5D",
+            "0x0040AC5B",
+            "0x7CCC38CA"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 102,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 64,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00EEACBB",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 103,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 76,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AC933C",
+            "0x750E68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 104,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 81,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00EEACBB",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 107,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 74,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00402361",
+            "0x77AE0088"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 108,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 81,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 109,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 44,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00EEACBB",
+            "0x77AE460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 111,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 36,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 3566
+        },
+        {
+          "seq_near": 118,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 554,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4E03",
+            "0x00415A6D",
+            "0x54E43437",
+            "0x54E433D4"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 120,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 104,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0040235A",
+            "0x00402361"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 123,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 772,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4E03",
+            "0x00415A6D",
+            "0x54E43437",
+            "0x54E433D4"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 128,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 248,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00402361",
+            "0x77AE0088"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 129,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 1,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x005DAC04",
+            "0x00EEACBB"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 134,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 1457,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00402361",
+            "0x77AE0088"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 136,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 1838,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0040235A",
+            "0x00402361"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 138,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 1486,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AE0088",
+            "0x77AC933C"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 139,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 92,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x00452530",
+            "0x0045DA62"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 141,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 1142,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x0040235A",
+            "0x00402361"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 143,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 2848,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x77AE0088",
+            "0x77AC933C"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 145,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 56,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x750E68E0",
+            "0x005DD088"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        },
+        {
+          "seq_near": 147,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 72,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7CCC4E7C",
+            "0x7CCC4C6D",
+            "0x7CCC4E03",
+            "0x750E68E0",
+            "0x005DD088"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 21845
+        }
+      ],
+      "unique_caller_addrs": [
+        "0x0040235A",
+        "0x00402361",
+        "0x0040AC5B",
+        "0x0040CD1A",
+        "0x00415613",
+        "0x00415654",
+        "0x00415969",
+        "0x00415A6D",
+        "0x00452530",
+        "0x0045DA62",
+        "0x005DAC04",
+        "0x005DD088",
+        "0x00ECBA5D",
+        "0x00EEACBB",
+        "0x54E433D4",
+        "0x54E43437",
+        "0x54E4679E",
+        "0x750E68E0",
+        "0x77AA3339",
+        "0x77ABD7C1",
+        "0x77AC933C",
+        "0x77AE0088",
+        "0x77AE460B",
+        "0x7CCC279E",
+        "0x7CCC38CA",
+        "0x7CCC4C6D",
+        "0x7CCC4E03",
+        "0x7CCC4E7C",
+        "0x7CCCB6DE"
+      ]
+    },
+    {
+      "timestamp": 1775409956.221398,
+      "near_frame": "C:\\Users\\skurtyy\\Documents\\GitHub\\AlmightyBackups\\NightRaven1\\Vibe-Reverse-Engineering-Claude\\autopatch\\diagnostic_captures\\near_frame.jsonl",
+      "far_frame": "C:\\Users\\skurtyy\\Documents\\GitHub\\AlmightyBackups\\NightRaven1\\Vibe-Reverse-Engineering-Claude\\autopatch\\diagnostic_captures\\far_frame.jsonl",
+      "total_missing_draws": 2458,
+      "missing_draws": [
+        {
+          "seq_near": 38,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 50,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514E03",
+            "0x56013437",
+            "0x560133D4",
+            "0x00EE8032"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 261
+        },
+        {
+          "seq_near": 40,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 50,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 261
+        },
+        {
+          "seq_near": 52,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 84,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00452530",
+            "0x0045DA62"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 261
+        },
+        {
+          "seq_near": 54,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 41,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x6751B6DE",
+            "0x67514E7C",
+            "0x67514E03",
+            "0x5601679E",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 261
+        },
+        {
+          "seq_near": 77,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 78,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514E03",
+            "0x00415654",
+            "0x56013437",
+            "0x560133D4"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 121771
+        },
+        {
+          "seq_near": 79,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 72,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 121771
+        },
+        {
+          "seq_near": 81,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 50,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00402361",
+            "0x77D40088"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 83,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 84,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 84,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 77,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 85,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 59,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 86,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 75,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 87,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 68,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 88,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 83,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 89,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 85,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 90,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 82,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 91,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 73,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 92,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 54,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 93,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 78,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 94,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 51,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 40139
+        },
+        {
+          "seq_near": 96,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 80,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 121771
+        },
+        {
+          "seq_near": 97,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 62,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 121771
+        },
+        {
+          "seq_near": 98,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 50,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x005DD088",
+            "0x005DAC04"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 121771
+        },
+        {
+          "seq_near": 99,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 68,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 100,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 68,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x005DD088",
+            "0x005DAC04"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 101,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 59,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 102,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 99,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x005DD088",
+            "0x005DAC04"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 103,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 52,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 104,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 76,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x005DD088",
+            "0x005DAC04"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 105,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 106,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 106,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 69,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x005DD088",
+            "0x005DAC04"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 107,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 50,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 108,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 66,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x005DD088",
+            "0x005DAC04"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 109,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 69,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 110,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 83,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x005DD088",
+            "0x005DAC04"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 111,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 68,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 112,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 63,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x005DD088",
+            "0x005DAC04"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 114,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 45,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 121771
+        },
+        {
+          "seq_near": 115,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 64,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 116,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 84,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 117,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 59,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 118,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 79,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 119,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 20,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 120,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 68,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 121,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 60,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 122,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 44,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 123,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 62,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 124,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 39,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00EEACBB",
+            "0x77D4460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 125,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 52,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x77D2933C",
+            "0x751768E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 105418
+        },
+        {
+          "seq_near": 127,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 15,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 121771
+        },
+        {
+          "seq_near": 129,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 85,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x67514E7C",
+            "0x67514C6D",
+            "0x67514E03",
+            "0x00402361",
+            "0x77D40088"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 121771
+        }
+      ],
+      "unique_caller_addrs": [
+        "0x0040235A",
+        "0x00402361",
+        "0x0040CD1A",
+        "0x00415654",
+        "0x00415969",
+        "0x00415A6D",
+        "0x00452530",
+        "0x0045DA62",
+        "0x005DAC04",
+        "0x005DD088",
+        "0x00EC9370",
+        "0x00EE74A0",
+        "0x00EE8032",
+        "0x00EEACBB",
+        "0x560133D4",
+        "0x56013437",
+        "0x5601679E",
+        "0x560305E1",
+        "0x560305EF",
+        "0x6751279E",
+        "0x67514C6D",
+        "0x67514C8C",
+        "0x67514E03",
+        "0x67514E7C",
+        "0x675155C6",
+        "0x6751B6DE",
+        "0x751768E0",
+        "0x77D03339",
+        "0x77D1D7C1",
+        "0x77D2933C",
+        "0x77D40088",
+        "0x77D4460B"
+      ]
+    },
+    {
+      "timestamp": 1775462959.0667815,
+      "near_frame": "C:\\Users\\skurtyy\\Documents\\GitHub\\AlmightyBackups\\NightRaven1\\Vibe-Reverse-Engineering-Claude\\autopatch\\diagnostic_captures\\near_frame.jsonl",
+      "far_frame": "C:\\Users\\skurtyy\\Documents\\GitHub\\AlmightyBackups\\NightRaven1\\Vibe-Reverse-Engineering-Claude\\autopatch\\diagnostic_captures\\far_frame.jsonl",
+      "total_missing_draws": 2428,
+      "missing_draws": [
+        {
+          "seq_near": 38,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 50,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774E03",
+            "0x57773437",
+            "0x577733D4",
+            "0x00EE8032"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 261
+        },
+        {
+          "seq_near": 40,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 50,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 261
+        },
+        {
+          "seq_near": 52,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 84,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00452530",
+            "0x0045DA62"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 261
+        },
+        {
+          "seq_near": 54,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 41,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x7977B6DE",
+            "0x79774E7C",
+            "0x79774E03",
+            "0x5777679E",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 261
+        },
+        {
+          "seq_near": 76,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 78,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774E03",
+            "0x00415654",
+            "0x57773437",
+            "0x577733D4"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 77,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 63,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x005DAC04",
+            "0x00EEACBB"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 78,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 88,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 79,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 40,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x005DAC04",
+            "0x00EEACBB"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 81,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 35,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 82,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 83,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 83,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 63,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 84,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 60,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 85,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 64,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 86,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 85,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 87,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 45,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 88,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 72,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 89,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 57,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 90,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 74,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 91,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 49,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 92,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 68,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 93,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 72,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 94,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 78,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 95,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 46,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 97,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 66,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 98,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 83,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 99,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 82,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 100,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 66,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 101,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 67,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 102,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 85,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 103,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 99,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 104,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 46,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 105,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 99,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 107,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 26,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 108,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 75,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 109,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 72,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 110,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 66,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 111,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 32,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 112,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 68,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 113,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 22,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 114,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 75,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 115,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 57,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 116,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 81,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 117,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 77,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 118,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 29,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 119,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 85,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 295809
+        },
+        {
+          "seq_near": 120,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 80,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x7708933C",
+            "0x76DA68E0"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 121,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 45,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 123,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 80,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x0045DA62",
+            "0x0040235A"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 124,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 58,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x0040CD1A",
+            "0x00452530"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        },
+        {
+          "seq_near": 125,
+          "method": "DrawIndexedPrimitive",
+          "prim_count": 84,
+          "vtx_decl_hash": "",
+          "texture_ptrs": [],
+          "caller_addrs": [
+            "0x79774E7C",
+            "0x79774C6D",
+            "0x79774E03",
+            "0x00EEACBB",
+            "0x770A460B"
+          ],
+          "start_vertex": 0,
+          "num_vertices": 279770
+        }
+      ],
+      "unique_caller_addrs": [
+        "0x0040235A",
+        "0x00402361",
+        "0x0040CD1A",
+        "0x00415654",
+        "0x00415969",
+        "0x00415A6D",
+        "0x00452530",
+        "0x0045DA62",
+        "0x005DAC04",
+        "0x005DD088",
+        "0x00EC9370",
+        "0x00EE5A51",
+        "0x00EE8032",
+        "0x00EEACBB",
+        "0x577718C9",
+        "0x577733D4",
+        "0x57773437",
+        "0x5777679E",
+        "0x577905E1",
+        "0x577905EF",
+        "0x76DA68E0",
+        "0x77063339",
+        "0x7707D7C1",
+        "0x7708933C",
+        "0x770A0088",
+        "0x770A460B",
+        "0x7977279E",
+        "0x79774C6D",
+        "0x79774C8C",
+        "0x79774E03",
+        "0x79774E7C",
+        "0x797755C6",
+        "0x7977B6DE"
+      ]
+    }
+  ],
   "tried_addrs": [
     4223312,
     4223677,
@@ -40,6 +3086,43 @@
     15900888,
     15900892,
     4417344,
-    4417485
+    4417485,
+    4238460,
+    4238502,
+    4246722,
+    4531411,
+    4281946,
+    4282735,
+    4577900,
+    4283001,
+    6138765,
+    15641768,
+    4246855,
+    15627304,
+    4282970,
+    4577913,
+    6138859,
+    15641814,
+    4281899,
+    4203300,
+    4282785,
+    4246699,
+    15627299,
+    4283013,
+    4282951,
+    15641832,
+    15641739,
+    15627371,
+    4246748,
+    15620510,
+    15620612,
+    15641710,
+    15620501,
+    4246718,
+    6138687,
+    4282040,
+    4203253,
+    4531384,
+    4578010
   ]
 }

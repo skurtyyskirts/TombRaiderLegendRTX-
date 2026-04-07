@@ -94,6 +94,12 @@ def _deploy_tracer() -> Path | None:
 
 def _restore_proxy() -> None:
     """Restore the proxy DLL after tracer capture."""
+    import subprocess as _sp
+
+    # Ensure game is dead before restoring (avoids file-in-use errors)
+    _sp.run(["taskkill", "/f", "/im", "trl.exe"], capture_output=True)
+    time.sleep(3)
+
     from autopatch.safety import restore_game_dll
     restore_game_dll()
 
@@ -105,8 +111,9 @@ def _restore_proxy() -> None:
 
 
 def _launch_and_capture(macro_name: str) -> Path | None:
-    """Launch game, run macro, trigger capture, return JSONL path."""
-    from livetools.gamectl import find_hwnd_by_exe, send_keys, load_macros
+    """Launch game directly into Peru via TR7.arg, run movement macro, trigger capture."""
+    from livetools.gamectl import (find_hwnd_by_exe, send_keys, load_macros,
+                                   get_window_info)
 
     game_exe = GAME_DIR / "trl.exe"
 
@@ -120,52 +127,65 @@ def _launch_and_capture(macro_name: str) -> Path | None:
         if p.exists():
             p.unlink()
 
-    # Launch trl.exe directly — tracer captures native D3D9 calls,
-    # Remix launcher is not needed and would interfere.
+    # Bypass setup dialog via registry and write TR7.arg for direct level load
+    sys.path.insert(0, str(REPO_ROOT / "patches" / "TombRaiderLegend"))
+    from run import set_graphics_config, dismiss_setup_dialog, write_tr7_arg
+    set_graphics_config()
+    write_tr7_arg(chapter=4)
+
+    # Launch trl.exe directly — the tracer replaces d3d9.dll, so using
+    # NvRemixLauncher32 would load two competing D3D9 wrappers (deadlock).
     print(f"[diagnose] Launching game for '{macro_name}' capture...")
     subprocess.Popen([str(game_exe)], cwd=str(GAME_DIR))
 
-    # Wait for game window, handling the setup dialog that appears when
-    # the game detects a different d3d9.dll (tracer vs proxy).
+    # Wait for game window
     hwnd = None
     setup_dismissed = False
     for i in range(90):
-        # Try dismissing setup dialog first (game shows it before main window)
-        if not setup_dismissed:
-            try:
-                sys.path.insert(0, str(REPO_ROOT / "patches" / "TombRaiderLegend"))
-                from run import dismiss_setup_dialog
-                if dismiss_setup_dialog():
-                    setup_dismissed = True
-                    print("[diagnose] Setup dialog dismissed")
-            except Exception:
-                pass
+        if not setup_dismissed and dismiss_setup_dialog():
+            setup_dismissed = True
+            time.sleep(3)
+            continue
 
         hwnd = find_hwnd_by_exe("trl.exe")
-        if hwnd and setup_dismissed:
-            break
-        # After dialog is dismissed, the main window may take a moment
-        if hwnd and i > 10:
-            break
+        if hwnd:
+            info = get_window_info(hwnd)
+            if "Setup" not in info["title"]:
+                break
+            else:
+                dismiss_setup_dialog()
+                hwnd = None
         time.sleep(1)
 
     if not hwnd:
         print("[diagnose] ERROR: Game window not found after 90s")
         return None
 
-    print("[diagnose] Game window found. Waiting 25s for level to load...")
-    time.sleep(25)
+    # Wait for game to load
+    print("[diagnose] Game window found. Waiting 20s for initialization...")
+    time.sleep(20)
 
-    # Run position macro
+    # Skip the Peru cutscene (3s wait, then ESC → W → ENTER)
+    print("[diagnose] Skipping cutscene...")
+    time.sleep(3)
+    send_keys(hwnd, "ESCAPE WAIT:1550 W WAIT:1550 RETURN")
+    time.sleep(5)
+
+    # Run movement-only macro to position Lara
     macros = load_macros(str(MACROS_FILE))
     if macro_name in macros:
         steps = macros[macro_name]["steps"]
-        print(f"[diagnose] Running macro '{macro_name}' ({len(steps)} steps)...")
-        send_keys(hwnd, " ".join(steps), delay_ms=0)
+        if isinstance(steps, list):
+            steps = " ".join(steps)
+        print(f"[diagnose] Running movement macro '{macro_name}'...")
+        send_keys(hwnd, steps, delay_ms=0)
     else:
-        print(f"[diagnose] WARNING: Macro '{macro_name}' not found, using raw position")
+        print(f"[diagnose] ERROR: Macro '{macro_name}' not found")
+        return None
 
-    time.sleep(2)
+    # Wait for movement to complete
+    print("[diagnose] Waiting 15s for movement to complete...")
+    time.sleep(15)
 
     # Trigger capture
     trigger_path = GAME_DIR / "dxtrace_capture.trigger"
@@ -221,7 +241,7 @@ def diff_frames(near_jsonl: Path, far_jsonl: Path) -> list[MissingDraw]:
                 prim_count=args.get("PrimitiveCount", 0),
                 vtx_decl_hash=str(draw.get("vertex_decl_elements", "")),
                 texture_ptrs=[str(t) for t in draw.get("textures", [])[:4]],
-                caller_addrs=[hex(a) for a in draw.get("backtrace", [])[:5]],
+                caller_addrs=[a if isinstance(a, str) else hex(a) for a in draw.get("backtrace", [])[:5]],
                 start_vertex=args.get("StartVertex", 0),
                 num_vertices=args.get("NumVertices", 0),
             ))

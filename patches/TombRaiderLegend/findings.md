@@ -1540,3 +1540,677 @@ Instead of fully NOPing the visibility checks in PostSector_ObjectLoop, make the
 - Trace `0x0040E402` (the call site) with `--read "[esp+4]:4:uint32"` to see what values are pushed as the lodColor parameter.
 - If anti-culling patches are active, temporarily disable them and confirm the crash goes away — this would confirm cause #2.
 - For a runtime fix: `livetools mem write 0x0040D2AC` to inject `test esi,esi; jz 0x40D3EB` as a hot-patch.
+
+## RenderLights_FrustumCull Call Chain Analysis — 2026-04-06
+
+### Summary
+
+Traced the complete call chain from `RenderLights_FrustumCull` (0x60C7D0) upward through 4 levels. The function is reachable ONLY through a single path, and every level has gating conditions that can prevent execution. The top-level function is dispatched via a C++ vtable, not a direct call.
+
+### Call Chain (bottom to top)
+
+| Level | Address | Function | Called By |
+|-------|---------|----------|-----------|
+| 0 | 0x60C7D0 | `RenderLights_FrustumCull` | 0x60E3B9 (in RenderLights_Caller) |
+| 1 | 0x60E2D0 | `RenderLights_Caller` | 0x60383A (in LightGroupArray_RenderAll) |
+| 2 | 0x603810 | `LightGroupArray_RenderAll` | 0x60A62C (in RenderLights_TopLevel) |
+| 3 | 0x60A0F0 | `RenderLights_TopLevel` | vtable slot [6] at 0xF08498 (indirect dispatch) |
+
+### Gate Conditions at Each Level
+
+**Level 3 — RenderLights_TopLevel (0x60A0F0):**
+- `[this+0xFA2E] != 0` → early exit (rendering disabled)
+- `[this+0xFA2C] == 0` → early exit (lights not initialized)
+- `[*(0x1392E18)+0x10] != 0` → early exit (scene loading/transition)
+
+**Level 2 — LightGroupArray_RenderAll (0x603810):**
+- Iterates `[param+0x14]` light groups; skips any group where `[group+0x94] + [group+0x84] == 0`
+
+**Level 1 — RenderLights_Caller (0x60E2D0):**
+- Three conditions for shadow setup (AND-ed):
+  1. `[this+0x84] != 0` (light data pointer must exist)
+  2. `[*(0x1392E18)+0x166] != 0` (scene-level light enable)
+  3. `[this+0x74]->[+0x444] & 1` (renderer light capability bit)
+- FrustumCull specifically guarded by `[this+0x1B0]` (light count):
+  - If `[this+0x1B0] != 0`, byte at `esp+0x17` set to 1 (0x60E34D)
+  - At 0x60E3B1: `je 0x60E4B6` — skips FrustumCull if `esp+0x17 == 0`
+
+**Level 0 — RenderLights_FrustumCull (0x60C7D0):**
+- Uses cull globals: `*0xF2A0D4` (pass 1 cull mode) and `*0xF2A0D8` (pass 2 cull mode)
+- Iterates `[this+0x1B0]` lights, calls `LightVisibilityCheck` (0x60B050), then 6-plane frustum test
+- Lights visible: drawn immediately (mode=1); lights culled by planes: deferred and drawn (mode=0)
+
+### Key Findings
+
+1. **Single call path**: There is exactly ONE path to `RenderLights_FrustumCull`. No redundant or alternative paths exist.
+
+2. **Virtual dispatch at top**: `RenderLights_TopLevel` (0x60A0F0) has ZERO direct call xrefs. It is vtable slot [6] (+0x18) at vtable address 0xF08480. Callers use `call [reg+0x18]` — there are 109 such indirect call sites in the binary.
+
+3. **0x60E300 and 0x60E345 have NO callers**: These are not separate functions — they are mid-function addresses within `RenderLights_Caller` (which starts at 0x60E2D0). 0x60E345 is an internal jump target (label `code_r0x0060e345` in decompilation).
+
+4. **Critical gating variable**: `[this+0x1B0]` at level 1 is the light count. If this is 0, FrustumCull is never called regardless of other conditions. This is the SAME field that FrustumCull itself iterates over — if the light list is empty at the object level, the function is skipped.
+
+5. **Three early exits at top level**: The most likely reason FrustumCull is not reached at runtime is one of:
+   - `[this+0xFA2C] == 0` — lights never marked as initialized
+   - `[*(0x1392E18)+0x10] != 0` — scene still in "loading" state
+   - The vtable dispatch at slot [6] is simply never invoked by the render loop
+
+### Suggested Live Verification
+
+To determine WHY RenderLights_FrustumCull is not called at runtime:
+
+1. **Trace vtable dispatch**: `livetools collect 0x60A0F0 0x60E2D0 0x603810 0x60C7D0` for 10 seconds — determines which level is reached and which is not.
+2. **If 0x60A0F0 is never hit**: The vtable dispatch is never invoked — investigate the render loop's call to vtable[6].
+3. **If 0x60A0F0 IS hit but 0x603810 is not**: Read the gate variables:
+   - `livetools bp add 0x60A0F0` → `regs` → check `[ecx+0xFA2E]`, `[ecx+0xFA2C]`, `[*(0x1392E18)+0x10]`
+4. **If 0x603810 IS hit but 0x60E2D0 is not**: Light group array is empty — `[param+0x14] == 0`.
+5. **If 0x60E2D0 IS hit but 0x60C7D0 is not**: Check `[this+0x1B0]` (light count per group) and the three AND-ed conditions.
+
+
+## Crash Analysis: Access Violation at 0x00EE88AD — 2026-04-06
+
+### Summary
+
+The crash at EIP=0x00EE88AD is inside the MSVC CRT `_output` function (the internal printf/sprintf formatter), specifically in the `%s` narrow-string handler's `strnlen` loop. The function (0x00EE8383–0x00EE8E3B, 2744 bytes) is the core state-machine that processes format specifiers (`%d`, `%s`, `%x`, `%c`, etc.) for all printf-family calls. A caller passed a `%s` argument with the garbage pointer 0x00008EF1 — not NULL (so the `"(null)"` fallback at 0xF2B3F8 was not triggered), but not a valid address either. This is a **corrupted va_arg** or a **use-after-free/dangling pointer** passed as a string argument to sprintf or similar.
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x00EE8383 | `_output` — CRT internal printf formatter (state machine for format specifiers) |
+| 0x00EE888D | Entry point for narrow `%s` strnlen path (code label within _output) |
+| 0x00EE889B | Narrow `%s` handler: NULL check on string pointer |
+| 0x00EE88AC | `strnlen` loop: `dec ecx; cmp byte ptr [eax], 0; je done; inc eax; test ecx, ecx; jne loop` |
+| 0x00EE88AD | **CRASH SITE**: `cmp byte ptr [eax], 0` — EAX=0x8EF1 is unmapped |
+| 0x00EE534E | `sprintf(buf, fmt, ...)` — CRT wrapper calling _output |
+| 0x00EE52F5 | Another sprintf variant calling _output |
+| 0x00EE64F0 | Printf-family caller of _output (likely `_snprintf` or `fprintf`) |
+| 0x00EE6724 | Printf-family caller of _output |
+| 0x00EE7043 | Printf-family caller of _output |
+
+### Crash Register Context
+
+| Register | Value | Meaning |
+|----------|-------|---------|
+| EIP | 0x00EE88AD | Inside `_output` strnlen loop |
+| EAX | 0x00008EF1 | Bad string pointer from va_arg (not NULL, not valid) |
+| ECX | 0x7FFFFFFE | Precision = INT_MAX-1 → no explicit precision in format (default `%s`) |
+| ESI | 0xFFFFFFFB | -5 (likely unrelated local or counter) |
+| EBX | 0x73 | ASCII 's' — the format specifier character being processed |
+
+### Code Path to Crash
+
+```
+1. Some game function calls sprintf(buf, "...%s...", bad_ptr)
+2. sprintf (0xEE534E) calls _output (0xEE8383)
+3. _output state machine hits '%s' specifier (BL = 0x73 = 's')
+4. At 0xEE8638: va_arg advances → loads string pointer = 0x8EF1 from stack
+5. At 0xEE8651: je 0xEE889B (narrow string path, not wide)
+6. At 0xEE889B: test eax, eax → EAX=0x8EF1 ≠ 0, skip "(null)" fallback
+7. At 0xEE88AC-88B5: strnlen loop begins with ECX=0x7FFFFFFE
+8. At 0xEE88AD: cmp byte ptr [eax], 0 → ACCESS VIOLATION reading 0x8EF1
+```
+
+### Decompiled _output (relevant %s excerpt)
+
+```c
+// At code_r0x00ee862b — handles 's' and 'S' format specifiers:
+precision = (precision == -1) ? 0x7FFFFFFF : precision;  // default = no limit
+va_list_ptr += 4;
+str_ptr = *(va_list_ptr - 4);   // <-- this loaded 0x8EF1
+
+if (!(flags & 0x810)) {         // narrow string path (not 'l' or 'w' modifier)
+    goto narrow_strnlen;         // → 0xEE889B
+}
+// wide string path...
+
+// narrow_strnlen (0xEE889B):
+if (str_ptr == NULL) {
+    str_ptr = global_null_string;  // "(null)" at [0xF2B3F8]
+}
+// strnlen loop:
+p = str_ptr;
+while (precision-- && *p != 0) p++;  // CRASH: *0x8EF1 is unmapped
+length = p - str_ptr;
+```
+
+### Reachability from Patched Addresses
+
+| Patch Address | Description | Reaches _output? |
+|---------------|-------------|------------------|
+| 0x60E3B1 | RenderLights gate | YES — via 0x60BCF0 → 0x60AFC0 → CRT printf chain |
+| 0x603AE6 | Light count clear | NO — not in callgraph to _output |
+| 0xEC6337 | Sector light gate | NO — not in callgraph to _output |
+| 0x46C33E | Mesh cull flag | YES — via 0x458630 → deep call chain → 0xEE534E (sprintf) |
+
+The crash is reachable from both the RenderLights gate (0x60E3B1) and the mesh cull flag (0x46C33E) patches, but the cause is **not the patches themselves** — the crash is a bad string pointer passed to `sprintf` by game code. The patches may have allowed execution of a code path that was previously culled/skipped, where the game accesses an uninitialized or freed string.
+
+### Root Cause Analysis
+
+The pointer 0x8EF1 has hallmarks of a **corrupted or garbage value**:
+- Too small to be a valid heap/stack address (those are in the 0x00100000+ range)
+- Not NULL (would have been caught by the `"(null)"` fallback)
+- Could be a truncated pointer (only lower 16 bits valid), an uninitialized local, or a struct field read from an object that was freed or never initialized
+
+Most likely scenario: **one of the cull-disable patches forced rendering of an object/sector whose associated data structure was never fully initialized** because the original code would have skipped it. The game's rendering code then passed an uninitialized string field to `sprintf` (for debug logging, error reporting, or material/texture name resolution).
+
+### Suggested Live Verification
+
+1. **Set a breakpoint on 0xEE534E** (sprintf) to catch the call and inspect the format string and arguments before they reach `_output`
+2. **Trace 0x60AFC0** to see if the RenderLights path triggers sprintf calls with string args
+3. **Check if the crash is deterministic** — if it only happens sometimes, it's likely a use-after-free; if always, it's an uninitialized field
+4. **Temporarily re-enable one cull patch at a time** to isolate which patch allows the code path that produces the bad pointer:
+   - First restore 0x46C33E (mesh cull flag) and test
+   - Then restore 0x60E3B1 (RenderLights gate) and test
+
+
+## Complete Culling Gate Analysis -- All Conditional Jumps That Skip DrawIndexedPrimitive -- 2026-04-06
+
+### Summary
+
+Traced the full draw call pipeline from three entry points (TerrainDrawable_Dispatch, Sector_RenderMeshes, Sector_IterateMeshArray) down to where DrawIndexedPrimitive actually fires. Found **14 distinct conditional gates** that can suppress draw calls. The existing patches (NOP at 0x40AE3E, 0x46B85A, 0x46C33E, and RET at 0x454AB0) cover only 4 of them. The remaining 10 gates -- particularly the _object+0x10 gate, the 0x10024E8 global gate, and the sector-level skip -- are likely responsible for the drop from ~2,800 to ~178 draws.
+
+---
+
+### Function 1: TerrainDrawable_Dispatch (0x40AE20)
+
+Called per terrain tile via vtable. this param in ECX, mode in [ebp+8].
+
+| # | Address | Instruction | Condition | What It Skips | Already Patched? |
+|---|---------|-------------|-----------|---------------|------------------|
+| 1 | 0x40AE3E | jne 0x40B1A6 | [esi+0x1C] & 0x20000 != 0 when this==0x1000 | Entire function -- skips to return | **YES** (NOP) |
+| 2 | 0x40B0F4 | je 0x40B1A6 | _object+0x20 == NULL (render target pointer) | Entire draw section -- no DIP issued | NO |
+| 3 | 0x40B125 | je 0x40B167 | (_object+0x1DC >> 5) & 1 == 0 | Chooses between two draw paths (both draw) | NO -- both paths draw |
+
+**Key insight for TerrainDrawable_Dispatch**: Gate #2 at 0x40B0F4 is critical. _object is the global at [0x1392E18], and _object+0x20 must be non-NULL for ANY draw to happen. If NULL, the terrain tile is silently skipped.
+
+---
+
+### Function 2: Sector_RenderMeshes (0x46B7D0)
+
+Called per sector. Iterates objects within sector mesh data.
+
+| # | Address | Instruction | Condition | What It Skips | Already Patched? |
+|---|---------|-------------|-----------|---------------|------------------|
+| 4 | 0x46B7EA+0x46B7F2 | jns+je combo | [0x10E5384]>>8 >= 0 AND sectorData+8 == [0x10E5438] | Entire function -- returns immediately | NO |
+| 5 | 0x46B825 | jle 0x46B885 | meshBase+0x14 <= 0 (object count) | Loop does not execute | NO (data-driven) |
+| 6 | 0x46B83C | jne 0x46B877 | objectEntry+0x20 & 1 -- hidden flag bit 0 | Skips this object entirely | NO |
+| 7 | 0x46B844 | jne 0x46B877 | objectEntry+0x20 & 0x20000 -- cull flag | Skips this object entirely | NO |
+| 8 | 0x46B85A | jne 0x46B877 | sectorData+8 != [0x10E5438] when 0x200000 set | Proximity filter | **YES** (NOP) |
+
+**Gate #4 is a sector-level early exit.** Global at 0x10E5384 is render-pass state. When bits 8-15 are positive AND sector matches current-sector at 0x10E5438, entire sector skipped. NOP the je at 0x46B7F2 (6 bytes).
+
+**Gates #6 and #7** per-object flag checks. NOP both: 0x46B83C (2 bytes) and 0x46B844 (2 bytes).
+
+---
+
+### Function 3: Sector_IterateMeshArray (0x46C320)
+
+| # | Address | Instruction | Condition | What It Skips | Already Patched? |
+|---|---------|-------------|-----------|---------------|------------------|
+| 9 | 0x46C33E | jne 0x46C34C | [esi+0x5C] & 0x82000000 != 0 | Skips MeshSubmit | **YES** (NOP) |
+
+---
+
+### Function 4: Sector_SubmitObject (0x40C650) -- called FROM Sector_RenderMeshes
+
+THREE early-exit gates before any draw work happens.
+
+| # | Address | Instruction | Condition | What It Skips | Already Patched? |
+|---|---------|-------------|-----------|---------------|------------------|
+| 10 | 0x40C666 | jne 0x40C920 | _object+0x10 != 0 -- global renderer flag | Entire function | NO |
+| 11 | 0x40C674+0x40C67E | jns/je combo | objectEntry+0x20 < 0 AND _object+0x182 == 0 | Negative-flagged objects | NO |
+| 12 | 0x40C68B | jne 0x40C920 | [0x10024E8] != 0 -- global submission lock | Entire function | NO |
+
+**Gate #10 is HUGE.** _object+0x10 being non-zero kills ALL object submission.
+
+**Gate #12 is also critical.** Global at 0x10024E8 is a submission lock.
+
+---
+
+### Function 5: MeshSubmit (0x458630) -- called FROM Sector_IterateMeshArray
+
+| # | Address | Instruction | Condition | What It Skips | Already Patched? |
+|---|---------|-------------|-----------|---------------|------------------|
+| 13 | 0x454AEA | je 0x454AFA | MeshSubmit_VisibilityGate returns 0 (not in PVS) | Entire MeshSubmit | **YES** (RET 0) |
+| 14 | top of 0x458630 | iVar4==0 check | VisibilityGate result (unless forceVisible) | MeshSubmit body | Covered by #13 |
+
+---
+
+### Priority NOP Targets (Not Yet Patched)
+
+| Priority | Address | Bytes | Patch | What It Disables |
+|----------|---------|-------|-------|------------------|
+| **P0** | 0x40C666 | 6 | 0F 85 B4 02 00 00 -> 90x6 | _object+0x10 renderer gate |
+| **P0** | 0x40C68B | 6 | 0F 85 8F 02 00 00 -> 90x6 | [0x10024E8] submission lock |
+| **P1** | 0x46B7F2 | 6 | 0F 84 8D 00 00 00 -> 90x6 | Sector already-rendered skip |
+| **P1** | 0x46B83C | 2 | 75 39 -> 90 90 | Per-object hidden flag (bit 0) |
+| **P1** | 0x46B844 | 2 | 75 31 -> 90 90 | Per-object cull flag (bit 17) |
+| **P2** | 0x40C674+0x40C67E | 2+6 | NOP both | Negative-flag + renderer byte gate |
+| **P3** | 0x40B0F4 | 6 | 0F 84 AC 00 00 00 -> 90x6 | _object+0x20 NULL check |
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x40AE20 | TerrainDrawable_Dispatch -- per-tile terrain draw vtable entry |
+| 0x40AE3E | [PATCHED] Flag check & 0x20000 |
+| 0x40B0F4 | _object+0x20 NULL gate -- skips terrain DIP |
+| 0x40C650 | Sector_SubmitObject -- 3 early-exit gates |
+| 0x40C666 | **[CRITICAL]** _object+0x10 gate -- kills ALL submissions |
+| 0x40C68B | **[CRITICAL]** [0x10024E8] global gate -- kills ALL submissions |
+| 0x46B7D0 | Sector_RenderMeshes -- per-sector iteration |
+| 0x46B7F2 | Sector already-rendered skip |
+| 0x46B83C | Per-object bit 0 (hidden) filter |
+| 0x46B844 | Per-object bit 17 (0x20000 cull) filter |
+| 0x46B85A | [PATCHED] Proximity filter |
+| 0x46C33E | [PATCHED] Mesh cull flags & 0x82000000 |
+| 0x454AB0 | [PATCHED] MeshSubmit_VisibilityGate -- PVS bitfield |
+| 0x1392E18 | _object global -- renderer state object |
+| 0x10E5384 | Render pass state global |
+| 0x10E5438 | Current sector pointer |
+| 0x10024E8 | Global submission lock flag |
+
+### Suggested Live Verification
+
+1. **Read _object+0x10**: mem read ptr at 0x1392E18, then read ptr+0x10. If non-zero when draws drop, this is the primary gate.
+2. **Read [0x10024E8]**: If non-zero during the drop, NOP 0x40C68B.
+3. **Read [0x10E5384]**: Check bits 8-15 during near/far camera positions.
+4. **Test P0 patches at runtime**: mem write 0x40C666 909090909090 and mem write 0x40C68B 909090909090, then dipcnt.
+5. **Test P1 patches**: mem write 0x46B7F2 909090909090 and mem write 0x46B83C 9090 and mem write 0x46B844 9090.
+
+
+## Mesh Streaming/LOD System Analysis -- 2026-04-06
+
+### Summary
+
+The draw call drop from ~2,800 to ~178 at distance is caused by the Object Tracker resource management system, NOT conditional culling jumps. The game uses a streaming architecture where mesh data (vertex/index buffers, materials, textures) is loaded on-demand via async file I/O from BIGFILE.DAT. The Object Tracker has a hard limit of 94 slots (MAX_OBJECTS=0x5E) for loaded objects. When all slots are consumed, an eviction function marks least-recently-used objects for unloading. With all sectors forced visible, nearby sectors consume all 94 slots, and distant sector mesh data either never loads or gets immediately evicted.
+
+### Architecture Overview
+
+Three-tier system:
+1. Sector Table (8 entries at 0x11582F8, stride 0x5C) -- manages which world sectors are loaded
+2. Object Tracker (94 entries at 0x11585D8, stride 0x24) -- manages individual mesh objects within sectors
+3. Async File Loader (via 0x5BADD0) -- reads mesh data from BIGFILE.DAT
+
+Object Tracker entry layout (0x24 bytes each):
+
+| Offset | Type | Description |
+|--------|------|-------------|
+| +0x00 | uint32 | Load request handle |
+| +0x04 | uint32 | Hash/resource ID |
+| +0x08 | ptr | Object data pointer (mesh header, materials, etc.) |
+| +0x0C | int16 | Resource key (index into resource map at [0x10EFC90]) |
+| +0x0E | int16 | State: 0=free, 1=loading, 2=loaded, 3=marked-evict, 4=evicting, 5=freed |
+| +0x10 | uint32 | Reference count |
+| +0x12 | int8 | Dependency count |
+| +0x13+ | int8[] | Dependency indices |
+
+Object states:
+- 0 (free): Slot available for reuse
+- 1 (loading): Async load in progress, NOT yet drawable
+- 2 (loaded): Fully loaded, mesh data available for rendering -- only state where draw calls happen
+- 3 (marked for eviction): About to be freed
+- 5 (freed): Data released, slot pending reuse
+
+Sector table entry layout (0x5C bytes each at 0x11582F8):
+
+| Offset | Type | Description |
+|--------|------|-------------|
+| +0x00 | int32 | Sector index |
+| +0x04 | byte | State: 0=free, 1=loading, 2=loaded, 4=dumping |
+| +0x05 | byte | Flags byte 1 |
+| +0x06 | uint16 | Flags: bit 0 = KEEP LOADED (protects from eviction!) |
+| +0x08 | ptr | Sector data pointer |
+| +0x38 | int32 | Last-accessed frame counter |
+| +0x3F | byte | Sector type: 1=standard, 2=fullscreen |
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x11585D8 | Object Tracker table base (94 entries x 0x24 bytes) |
+| 0x11582F8 | Sector table base (8 entries x 0x5C bytes) |
+| 0x5D5390 | ObjectTracker_FindOrLoad -- main lookup; initiates async load if not found |
+| 0x5D4240 | ObjectTracker_Resolve -- returns object data ptr (or NULL if not loaded) |
+| 0x5D44C0 | ObjectTracker_EvictUnneeded -- marks unreferenced objects as state 3 then frees |
+| 0x5D4380 | ObjectTracker_FreeEntry -- releases object data, sets state to 5 then 0 |
+| 0x5D4F30 | SectorEviction_ScanAndUnload -- iterates sectors, unloads those not accessed this frame |
+| 0x5D4DA0 | Sector_Unload -- unloads a single sector, sets state to 4 |
+| 0x5D5B60 | Sector_LoadOrFind -- finds/creates sector entry, initiates async load |
+| 0x5D5D80 | Sector_WaitForLoad -- blocks until sector load completes |
+| 0x5C3C20 | StreamUnitDataLoaded -- callback when stream unit finishes loading |
+| 0x5C2010 | StreamUnitDataDumped -- callback when stream unit is evicted |
+| 0x5BADD0 | AsyncLoader_StartLoad -- initiates async file read from BIGFILE.DAT |
+| 0x5D5200 | ObjectTracker_LoadComplete -- callback sets state to 2 (loaded/drawable) |
+| 0x458630 | MeshSubmit -- submits mesh for rendering; calls ObjectTracker_Resolve for data |
+| 0x10E5424 | g_frameCounter -- incremented each frame, used for LRU eviction |
+| 0x10EFC90 | Resource map pointer -- maps resource keys to object tracker indices |
+| 0x1159314 | Sector-to-Object mapping pointer |
+
+### The Draw Drop Mechanism
+
+1. SectorVisibility_RenderVisibleSectors (0x46C180) iterates sectors, calls Sector_RenderMeshes (0x46B7D0)
+2. Sector_RenderMeshes iterates mesh entries, calls Sector_SubmitObject (0x40C650)
+3. Inside Sector_SubmitObject, meshes are submitted to the draw queue
+4. BUT: MeshSubmit (0x458630) first calls ObjectTracker_Resolve (0x5D4240)
+5. ObjectTracker_Resolve calls ObjectTracker_FindOrLoad (0x5D5390)
+6. If the object is not in the tracker, it starts an async load and returns state=1 (loading)
+7. ObjectTracker_Resolve checks: if state != 2, returns NULL (mesh not drawable yet)
+8. MeshSubmit checks: if resolve returned NULL OR type != 2, skips the mesh entirely
+9. Result: all sectors are visible but distant mesh data was evicted, so draws = 0 for those sectors
+
+### Eviction Decision Flow
+
+SectorEviction_ScanAndUnload (0x5D4F30) runs during level transitions and evicts sectors when:
+  state != 0 AND state != 4 AND lastFrameAccessed != g_frameCounter AND (flags & 1) == 0
+
+ObjectTracker_EvictUnneeded (0x5D44C0) runs when the tracker is full (94/94) and evicts objects when:
+  state == 2 AND (flags >> 8) >= 0 AND lastFrameUsed != g_currentFrame
+  AND object not referenced by any loaded sector dependency list
+  AND object not in g_hiddenMeshList or active scene object list
+
+### Patch Strategies (Ranked by Feasibility)
+
+**Strategy A: Prevent sector eviction (SIMPLEST -- runtime patch)**
+NOP the call to SectorEviction_ScanAndUnload at its two call sites:
+- 0x5D31D9: E8 52 1D 00 00 -> 90 90 90 90 90 (5 bytes)
+- 0x5D5F59: E8 D2 EF FF FF -> 90 90 90 90 90 (5 bytes)
+This prevents sectors from being unloaded when a new sector loads. With only 8 sector slots, this limits the game to 8 simultaneously loaded sectors (usually sufficient for one level).
+
+**Strategy B: Prevent object eviction from tracker (MODERATE)**
+NOP the call to ObjectTracker_EvictUnneeded (0x5D44C0) at 0x5D5436 (inside ObjectTracker_FindOrLoad).
+Risk: if all 94 slots fill up and nothing can be evicted, new objects cannot load -> "Object tracker is full" error.
+
+**Strategy C: Set KEEP_LOADED flag on all sectors (TARGETED)**
+At runtime, write bit 0 of the flags word at sector_entry+6 for all 8 entries:
+  for each sector at 0x11582F8 + i*0x5C: OR byte at [sector + 6] with 0x01
+This tells the eviction scanner to skip that sector. Must be re-applied each frame or after level loads.
+
+**Strategy D: Increase MAX_OBJECTS limit (COMPLEX)**
+Change all 8 comparisons against 0x5E to a larger value (e.g., 0xFF = 255). But the object table at 0x11585D8 is a fixed-size array immediately followed by other data at 0x1159310. Would need to relocate the table to a new memory region.
+
+**Strategy E: Force async loads to complete synchronously (NUCLEAR)**
+Patch ObjectTracker_FindOrLoad to block (spin-wait) until the async load completes before returning, so state is always 2 by the time MeshSubmit checks it. Risk: stalls the render thread, may cause hitching.
+
+**Strategy F: Patch MeshSubmit to accept state 1 objects (DANGEROUS)**
+Change the type == 2 check to type >= 1 so loading-in-progress objects still submit draws. Risk: crashes from accessing partially-loaded mesh data (NULL vertex/index buffers).
+
+### Recommended Approach
+
+**Strategy A + C combined**: Prevent sector eviction AND set keep-loaded flags on all sectors.
+
+1. NOP both calls to SectorEviction_ScanAndUnload (0x5D4F30) -- 10 bytes total
+2. Set keep-loaded flag (bit 0 at sector+6) on all 8 entries each frame
+
+The 94-slot object tracker limit may still cause issues if all 8 sectors objects exceed 94 total. In that case, also NOP the eviction call inside ObjectTracker_FindOrLoad (Strategy B) and accept that the game may log "Object tracker is full" but will not crash.
+
+### Distance-Related Globals
+
+| Address | Value | Purpose |
+|---------|-------|---------|
+| 0xEFDDB0 | 0.001 | g_objectDistanceCullThreshold -- post-sector objects |
+| 0xEFD40C | 1.0 | g_objectDistanceBoundary -- distance boundary |
+| 0xEFDE58 | 2.0 | g_maxObjectDrawDistance -- clamp |
+| 0xEFDE50 | 255.0 | g_farLODThreshold |
+| 0xF11D0C | 512.0 | g_viewDistance -- base view distance |
+
+Post-sector distance formula: cull if g_objectDistanceCullThreshold > (g_objectDistanceBoundary - objectDistance) * scaleFactor
+
+Setting g_objectDistanceBoundary (0xEFD40C) to a very large value (e.g., 100000.0) at runtime would disable post-sector distance culling. But this alone will not help since the underlying mesh data is still not loaded.
+
+### Suggested Live Verification
+
+1. Attach livetools and read the object tracker table:
+   mem read 0x11585D8 0x870 -- dump all 94 entries
+   Count how many have state==2 (loaded) vs state==0 (free)
+   Near stage: expect many objects loaded
+   Far from stage: check if objects get evicted to state 0/5
+
+2. Set breakpoint on ObjectTracker_EvictUnneeded (0x5D44C0):
+   bp add 0x5D44C0 -- check if eviction fires during normal gameplay
+
+3. Test Strategy A at runtime:
+   mem write 0x5D31DA 9090909090 -- NOP first eviction scanner call
+   mem write 0x5D5F5A 9090909090 -- NOP second eviction scanner call
+   Walk far from stage, check if draw count stays at ~2800
+
+4. Set keep-loaded flags at runtime:
+   mem write 0x11582FE 01 -- sector 0 flags |= 1
+   mem write 0x115835A 01 -- sector 1 flags |= 1
+   (etc. for all 8, stride 0x5C)
+
+5. Increase distance globals at runtime:
+   mem write 0xEFD40C 461C4000 -- set boundary to 10000.0
+   mem write 0xEFDE58 461C4000 -- set max draw distance to 10000.0
+
+## Portal/PVS Traversal System — Complete Architecture — 2026-04-06
+
+### Summary
+
+The portal/PVS system has been fully reverse-engineered. Geometry disappearing at distance comes from the **sector mesh rendering path** (not the scene graph). The sector system uses a portal walk from the camera's sector to determine which of 8 loaded sectors are reachable. Unreachable sectors get their screen-space bounding rectangles reset to negative (impossible) values by `SectorPortalVisibility` (0x46D1D0), causing them to fail the width/height check in `SectorVisibility_RenderVisibleSectors` (0x46C180). A 15-byte patch at `0x46D1E0-0x46D1EE` forces all sector bounds to fullscreen defaults, ensuring every loaded sector renders regardless of portal reachability.
+
+### Architecture: Two Independent Rendering Paths
+
+**Path 1 — Sector Mesh Rendering** (the path that drops geometry at distance):
+
+```
+RenderFrame (0x450B00)
+  GetCameraSector (0x450A80)          — find camera's current sector
+  SetupCameraSector (0x46C4F0)        — portal walk from camera sector
+      portal loop: stride 0xA0 per portal connection entry
+      for reachable sectors: compute screen-space bounding rect [+0x3C..+0x42]
+  SectorPortalVisibility (0x46D1D0)   — reset all bounds to "invisible", set portal flags
+      RESETS all sector bounds to negative width/height
+      for portal-visible sectors: ORs visibility into sector[+0x44]
+  SectorVisibility_RenderVisibleSectors (0x46C180) — renders sectors passing checks
+      for each of 8 sector table entries:
+        CHECK: sector[+6] & 8 (loaded flag — always set for loaded sectors)
+        CHECK: sector[+5] == 0 (no special state)
+        CHECK: sectorType at [+0x43]: 1=standard, 2=fullscreen
+        CHECK: screen width >= g_minSectorScreenWidth (0x10FC920)
+        CHECK: screen height >= g_minSectorScreenHeight (0x10FC924)
+        Sector_RenderMeshes (0x46B7D0) — submit mesh draw calls
+```
+
+**Path 2 — Scene Graph Rendering** (effects, particles, billboards — NOT the problem):
+
+```
+RenderFrame (0x450B00)
+  RenderScene (0x443C20)
+      SceneTraversal_CullAndSubmit (0x407150)
+          list at sceneGraph+0x24: mesh effect nodes (linked list walk)
+          list at sceneGraph+0x2c: billboard/sprite nodes (linked list walk)
+      SceneGraphBuilder (0x436AF0 -> 0x408130)
+          list at sceneGraph+0x34: scene objects with frustum culling
+```
+
+### The Portal Walk Mechanism (0x46C4F0)
+
+SetupCameraSector implements portal-based sector discovery:
+
+1. Gets camera sector via `GetCameraSector` (0x450A80):
+   - Reads player struct at `[0x10FCAE8]+0xB2` (sector index)
+   - Calls `Sector_FindByIndex` (0x5D4870) to look up in sector table
+   - Falls back to `g_fallbackSectorIndex` (0x10E5458) if primary fails
+   - Camera override object at `0x10E579C` can redirect via vtable[0x28]
+
+2. Portal connection array (per-sector):
+   - Located at `[sectorData+8] -> [[+0]+0x10]`
+   - Count at `[[+0]+0xC]`
+   - Each entry stride 0xA0, containing:
+     - `[+0x04]`: pointer to connected sector entry
+     - `[+0x28..+0x68]`: portal plane/geometry data (normals, extents)
+     - `[+0x90..+0x98]`: portal normal vector
+
+3. Per-portal checks:
+   - Connected sector loaded? (`[sector+4] == 2`)
+   - Connected sector active? (`[sector+6] & 8`)
+   - Camera on correct side of portal plane? (dot product test at `0x46D0A0`)
+   - Portal visible through current frustum? (rect clipping at `0x46C360`)
+
+4. For visible portals: computes screen-space bounding rect in sector[+0x3C..+0x42]
+
+### The Bounds Reset — Root Cause (0x46D1D0)
+
+After the portal walk, `SectorPortalVisibility` runs and resets ALL sector bounds:
+
+```asm
+0x46D1DB: mov  eax, 0x1158336      ; sector table + 0x3E (loop start)
+0x46D1E0: mov  edx, 0x200          ; default X = 512
+0x46D1E5: mov  edi, 0xFFFFFE00     ; default W = -512 (MAKES WIDTH NEGATIVE)
+0x46D1EA: mov  esi, 0xFFFFFE40     ; default H = -448 (MAKES HEIGHT NEGATIVE)
+0x46D1EF: xor  ebp, ebp            ; zero for flags
+; Loop over all 8 sectors (stride 0x5C):
+0x46D1F1: mov  [eax-2], dx         ; sector[+0x3C] = 0x200 (x)
+0x46D1F5: mov  [eax], 0x1C0        ; sector[+0x3E] = 0x1C0 (y)
+0x46D1FA: mov  [eax+2], di         ; sector[+0x40] = 0xFE00 (w = -512)
+0x46D1FE: mov  [eax+4], si         ; sector[+0x42] = 0xFE40 (h = -448)
+0x46D202: mov  [eax+6], ebp        ; sector[+0x44] = 0 (portal flags)
+0x46D205: mov  [eax+0xA], ebp      ; sector[+0x48] = 0
+```
+
+Screen width calculation: `(x + w) * scale - x * scale = w * scale = -512 * scale` (NEGATIVE).
+Width check at 0x46C237: `-512 * scale < threshold` → **fails** → sector skipped.
+
+Sectors reachable through portals have their bounds overwritten by `SetupCameraSector` with proper positive values. Unreachable sectors keep the negative defaults and are never rendered.
+
+### Sector Table Layout (8 entries at 0x11582F8, stride 0x5C)
+
+```
+Offset  Size   Field               Description
++0x00   dword  sectorIndex         Sector ID number
++0x04   byte   sectorState         0=free, 1=loading, 2=loaded, 4=dumping
++0x05   byte   flags1              General flags
++0x06   byte   flags2              Bit 3 (0x08) = loaded/visible flag
++0x08   ptr    sectorDataPtr       Pointer to sector data structure
++0x24   ptr    pendingLoadPtr      Pending load data
++0x3C   word   boundX              Screen-space bounding rect X
++0x3E   word   boundY              Screen-space bounding rect Y
++0x40   word   boundW              Screen-space bounding rect W (signed)
++0x42   word   boundH              Screen-space bounding rect H (signed)
++0x43   dword  sectorType          1=standard mesh sector, 2=fullscreen overlay
++0x44   dword  portalFlags         Portal visibility result bits
++0x48   dword  reserved            Cleared each frame
+```
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x450B00 | RenderFrame — main render pipeline orchestrator |
+| 0x450A80 | GetCameraSector — camera sector lookup from player struct |
+| 0x46C4F0 | SetupCameraSector — portal walk, builds sector bounding rects |
+| 0x46D0A0 | PortalVisibilityTest — camera-vs-portal plane dot product |
+| 0x46C360 | PortalRectClip — 2D portal rectangle clipping |
+| 0x46D1D0 | SectorPortalVisibility — resets bounds, applies portal flags |
+| **0x46D1E0** | **PATCH: `mov edx, 0x200`** — default X position |
+| **0x46D1E5** | **PATCH: `mov edi, 0xFFFFFE00`** — negative width default |
+| **0x46D1EA** | **PATCH: `mov esi, 0xFFFFFE40`** — negative height default |
+| 0x46C180 | SectorVisibility_RenderVisibleSectors — sector render loop |
+| 0x46C237 | Width >= threshold check (fcomp against 0x10FC920) |
+| 0x46C242 | Width check skip jump (jnp) — 2 bytes |
+| 0x46C250 | Height >= threshold check (fcomp against 0x10FC924) |
+| 0x46C25B | Height check skip jump (jnp) — 2 bytes |
+| 0x403720 | Sector_ActivateAndResolveTextures — sets sector[+6] \|= 8 |
+| 0x5D59D7 | Caller of Sector_ActivateAndResolveTextures (sector load path) |
+| 0x46B900 | Sector_GetCameraFrustumParams — frustum data per sector |
+| 0x436AF0 | SceneGraphBuilder — calls 0x408130 if sceneGraph+0x34 list exists |
+| 0x408130 | SceneObjectWalker — iterates scene object linked list with culling |
+| 0x45BD30 | ListLinker — doubly-linked list insert for scene graph nodes |
+| 0x436110 | SceneNodeAllocator — allocates from pool at sceneGraph+0x38/+0x40 |
+| 0x11582F8 | g_sectorTable — 8 sector entries |
+| 0x10FC920 | g_minSectorScreenWidth — float threshold |
+| 0x10FC924 | g_minSectorScreenHeight — float threshold |
+| 0x107F6B8 | Scene graph root (billboards/effects, NOT sector meshes) |
+| 0x10FCAE8 | g_pPlayerCamera — player struct, sector index at +0xB2 |
+| 0x10E579C | g_pCameraOverrideObj — overrides sector lookup |
+| 0x10E5438 | g_currentSectorPtr — written from camera sector during render |
+
+### Proposed Patches
+
+#### Patch A (RECOMMENDED) — Force Fullscreen Sector Bounds
+
+Change the "invisible" default bounds in the reset loop so every loaded sector has fullscreen-filling bounding rects. 15 bytes total.
+
+```
+0x46D1E0: BA 00 02 00 00 → 31 D2 90 90 90   ; mov edx,0x200 → xor edx,edx; nop*3
+                                               ; x = 0 (left edge at screen left)
+0x46D1E5: BF 00 FE FF FF → BF 00 02 00 00   ; mov edi,0xFFFFFE00 → mov edi,0x200
+                                               ; w = +512 (right = x+w = 512 = full width)
+0x46D1EA: BE 40 FE FF FF → BE C0 01 00 00   ; mov esi,0xFFFFFE40 → mov esi,0x1C0
+                                               ; h = +448 (bottom = y+h = 0x1C0+0x1C0 = full height)
+```
+
+Effect: All 8 sectors get bounds (x=0, y=0x1C0, w=0x200, h=0x1C0):
+- Screen width = w * scale = 512 * scale (PASSES any threshold)
+- Screen height = h * scale = 448 * scale (PASSES any threshold)
+
+The portal walk in SetupCameraSector still runs and may overwrite bounds for portal-visible sectors with tighter values, but unreachable sectors now get fullscreen bounds instead of impossible negative bounds.
+
+Runtime (livetools) equivalent:
+```
+mem write 0x46D1E0 31D2909090           ; xor edx,edx; nop*3
+mem write 0x46D1E5 BF00020000           ; mov edi, 0x200
+mem write 0x46D1EA BEC0010000           ; mov esi, 0x1C0
+```
+
+#### Patch B (ALTERNATIVE) — NOP Width/Height Checks
+
+NOP the conditional jumps that skip rendering when sector bounds are too small. 4 bytes total.
+
+```
+0x46C242: 75 71 → 90 90    ; jnp 0x46C2B5 → nop nop (width check)
+0x46C25B: 75 58 → 90 90    ; jnp 0x46C2B5 → nop nop (height check)
+```
+
+Simpler patch but less clean: leaves the FPU compare instructions running with no consumer. Also means the scissor rect for unreachable sectors will have garbage values (the negative defaults), which may cause visual artifacts.
+
+Runtime equivalent:
+```
+mem write 0x46C242 9090
+mem write 0x46C25B 9090
+```
+
+#### Patch C (BELT AND SUSPENDERS) — Both A + B
+
+Apply both patches for maximum robustness. Patch A gives unreachable sectors valid bounds, Patch B removes the check entirely as defense-in-depth.
+
+### SceneTraversal_CullAndSubmit (0x407150) — Clarification
+
+This function is NOT part of the portal/sector system. It walks pre-built linked lists of scene EFFECT nodes (particles, sprites, billboards) that are populated by game code (particle spawners, effect systems). The linked lists are:
+- `sceneGraph+0x24`: mesh effect nodes (first loop, walk via `node+0x04` next pointer)
+- `sceneGraph+0x2c`: billboard/sprite nodes (second loop, same walk pattern)
+
+Each node has: `[+0x00]` = list pointer, `[+0x04]` = next, `[+0x08]` = flags, `[+0x0C]` = mesh ID, `[+0x10..+0x1C]` = position, `[+0x20..+0x3C]` = bounding box, `[+0x3C]` = color/alpha, `[+0x8C]` = data pointer.
+
+The existing RET patch at 0x407150 disables all culling within this function, but this has NO effect on sector mesh rendering (path 1). Both paths are completely independent.
+
+### Suggested Live Verification
+
+1. Apply Patch A at runtime via livetools:
+   ```
+   mem write 0x46D1E0 31D2909090
+   mem write 0x46D1E5 BF00020000
+   mem write 0x46D1EA BEC0010000
+   ```
+
+2. Walk Lara away from the stage lights — verify they remain visible.
+
+3. Monitor sector table visibility to confirm all sectors render:
+   ```
+   mem read 0x11582F8 0x2E0 --as hex    ; read all 8 sector entries
+   ```
+
+4. If Patch A alone fails, add Patch B:
+   ```
+   mem write 0x46C242 9090
+   mem write 0x46C25B 9090
+   ```
+
+5. Check for render artifacts — if sectors render with wrong scissor rects:
+   ```
+   mem read 0x10FC900 16 --as float32   ; read current scissor rect values
+   ```
+
+6. If both patches work: promote to proxy C source in `TRL_ApplyMemoryPatches`.

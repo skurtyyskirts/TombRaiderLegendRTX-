@@ -1,38 +1,6 @@
 {
-  "skip_intro": {
-    "description": "Skip intro videos and logo screens to reach the main menu",
-    "steps": "WAIT:3000 ESCAPE WAIT:1000 ESCAPE WAIT:1000 ESCAPE WAIT:2000"
-  },
-  "start_new_game": {
-    "description": "From main menu, start a new game (Bolivia - Tiwanaku)",
-    "steps": "RETURN WAIT:1500 RETURN WAIT:1500 RETURN WAIT:5000"
-  },
-  "continue_game": {
-    "description": "From main menu, continue last saved game",
-    "steps": "DOWN RETURN WAIT:3000"
-  },
-  "load_croft_manor": {
-    "description": "From main menu, navigate to Croft Manor (typically last in level select)",
-    "steps": "RETURN WAIT:1500 DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN RETURN WAIT:5000"
-  },
-  "pause_unpause": {
-    "description": "Toggle pause menu",
-    "steps": "ESCAPE"
-  },
-  "screenshot": {
-    "description": "Take a screenshot via PrintScreen",
-    "steps": "WAIT:500 PAGEDOWN WAIT:500"
-  },
-  "camera_spin_test": {
-    "description": "Slowly spin the camera 360 degrees for culling/visibility testing",
-    "steps": "WAIT:1000 RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT RIGHT"
-  },
-  "walk_forward": {
-    "description": "Walk forward for a few seconds (for testing movement/rendering)",
-    "steps": "W W W W W W W W W W WAIT:500"
-  },
   "test_session": {
-    "description": "Menu nav, level load, camera pan, D/A strafe with hash screenshots (no Remix menu nav needed)",
-    "steps": "SPACE WAIT:1300 RETURN WAIT:5500 RETURN WAIT:2050 RETURN WAIT:1450 RETURN WAIT:4800 MOVETO:512,384 MOVETO:517,384 MOVETO:522,383 MOVETO:527,381 MOVETO:532,380 MOVETO:538,377 MOVETO:545,374 MOVETO:550,372 MOVETO:559,367 MOVETO:568,363 MOVETO:573,360 MOVETO:582,356 MOVETO:592,350 MOVETO:599,347 MOVETO:605,344 MOVETO:611,342 MOVETO:616,338 MOVETO:622,335 MOVETO:628,333 MOVETO:633,331 MOVETO:638,328 MOVETO:644,326 MOVETO:649,323 MOVETO:656,319 MOVETO:661,316 MOVETO:666,312 MOVETO:673,307 MOVETO:679,301 MOVETO:684,297 MOVETO:690,291 MOVETO:695,287 MOVETO:699,282 WAIT:200 MOVETO:512,384 WAIT:250 MOVETO:517,379 MOVETO:521,374 MOVETO:526,370 MOVETO:529,365 MOVETO:533,360 MOVETO:512,383 WAIT:2700 ] WAIT:2000 WAIT:3050 ] WAIT:500 HOLD:D:2000 WAIT:500 ] WAIT:500 HOLD:A:3000 WAIT:500 ]"
+    "description": "Movement-only: D/A strafe with screenshots (cutscene skip handled by launcher)",
+    "steps": "WAIT:2500 HOLD:D:2000 WAIT:500 ] WAIT:500 HOLD:A:3000 WAIT:500 ]"
   }
 }

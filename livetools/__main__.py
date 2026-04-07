@@ -128,7 +128,10 @@ def _spawn_daemon(target: str, *, spawn: bool = False) -> None:
             resp = client.send_command({"cmd": "status"})
             print(client.format_status_line(resp))
             print(f"Attached to {target}.")
-            client.DAEMON_LOG.unlink(missing_ok=True)
+            try:
+                client.DAEMON_LOG.unlink(missing_ok=True)
+            except PermissionError:
+                pass  # stale handle from previous daemon — harmless
             return
         time.sleep(0.3)
 
@@ -140,7 +143,10 @@ def _spawn_daemon(target: str, *, spawn: bool = False) -> None:
         pass
     if log_text:
         print(f"[error] Daemon log:\n{log_text}", file=sys.stderr)
-    client.DAEMON_LOG.unlink(missing_ok=True)
+    try:
+        client.DAEMON_LOG.unlink(missing_ok=True)
+    except PermissionError:
+        pass
     sys.exit(1)
 
 
@@ -305,6 +311,67 @@ def cmd_mem_alloc(args: argparse.Namespace) -> None:
         print(f"Allocated {args.size} bytes at {resp['addr']} (rwx)")
     else:
         print(f"[error] {resp.get('error', resp.get('msg', 'unknown'))}")
+
+
+def cmd_call(args: argparse.Namespace) -> None:
+    if not _require_attached():
+        return
+    addr = _parse_addr(args.addr)
+    arg_types = args.arg_types.split(",") if args.arg_types else []
+    arg_values: list = []
+    for v in (args.arg_values.split(",") if args.arg_values else []):
+        v = v.strip()
+        if v.startswith("0x"):
+            arg_values.append(v)
+        else:
+            try:
+                arg_values.append(int(v))
+            except ValueError:
+                arg_values.append(v)
+    resp = client.send_command({
+        "cmd": "call", "addr": addr,
+        "abi": args.abi, "retType": args.ret_type,
+        "argTypes": arg_types, "argValues": arg_values,
+    })
+    print(client.format_status_line(resp))
+    if resp.get("ok"):
+        print(f"Call returned: {resp.get('result', '(void)')}")
+    else:
+        print(f"[error] {resp.get('msg', resp.get('error', 'unknown'))}")
+
+
+def cmd_load_level(args: argparse.Namespace) -> None:
+    """Load a level by calling GAMELOOP_RequestLevelChangeByName via Frida."""
+    if not _require_attached():
+        return
+    level_name = args.level_name
+    fn_addr = _parse_addr(args.fn_addr)
+    tracker_addr = args.tracker_addr
+
+    # Allocate buffer and write level name as null-terminated ASCII
+    alloc_resp = client.send_command({"cmd": "mem_alloc", "size": 64})
+    if not alloc_resp.get("ok"):
+        print(f"[error] Failed to allocate memory: {alloc_resp.get('msg', 'unknown')}")
+        return
+    str_addr = "0x" + alloc_resp["addr"].lstrip("0x")
+    name_hex = level_name.encode("ascii").hex() + "00"
+    write_resp = client.send_command({"cmd": "mem_write", "addr": str_addr, "hex": name_hex})
+    if not write_resp.get("ok"):
+        print(f"[error] Failed to write level name: {write_resp.get('msg', 'unknown')}")
+        return
+
+    # Call GAMELOOP_RequestLevelChangeByName(name, gameTracker, doneType=4)
+    resp = client.send_command({
+        "cmd": "call", "addr": fn_addr,
+        "abi": "default", "retType": "void",
+        "argTypes": ["pointer", "pointer", "int32"],
+        "argValues": [str_addr, tracker_addr, 4],
+    })
+    print(client.format_status_line(resp))
+    if resp.get("ok"):
+        print(f"Level load requested: '{level_name}'")
+    else:
+        print(f"[error] {resp.get('msg', resp.get('error', 'unknown'))}")
 
 
 def cmd_disasm(args: argparse.Namespace) -> None:
@@ -751,6 +818,18 @@ def build_parser() -> argparse.ArgumentParser:
     ma = mem_sub.add_parser("alloc", help="Allocate rwx memory in target process")
     ma.add_argument("size", type=int, help="Number of bytes to allocate")
 
+    sp = sub.add_parser("call", help="Call a native function in the target process")
+    sp.add_argument("addr", help="Function address in hex")
+    sp.add_argument("--abi", default="default", help="Calling convention (default, stdcall, thiscall)")
+    sp.add_argument("--ret-type", default="void", help="Return type (void, int32, pointer, ...)")
+    sp.add_argument("--arg-types", default="", help="Comma-separated arg types (pointer,int32,...)")
+    sp.add_argument("--arg-values", default="", help="Comma-separated arg values (0x10E5370,4,...)")
+
+    sp = sub.add_parser("load_level", help="Load a game level via GAMELOOP_RequestLevelChangeByName")
+    sp.add_argument("level_name", help="Internal level name (e.g. bolivia1)")
+    sp.add_argument("--fn-addr", default="0x00451970", help="Address of RequestLevelChangeByName (default: 0x00451970)")
+    sp.add_argument("--tracker-addr", default="0x010E5370", help="Address of GameTracker global (default: 0x010E5370)")
+
     sp = sub.add_parser("disasm",
         help="Disassemble instructions at address (default: current EIP/RIP)")
     sp.add_argument("addr", nargs="?", default=None, help="Start address in hex")
@@ -1122,6 +1201,8 @@ def main() -> None:
                          else cmd_mem_write(a) if getattr(a, "mem_action", None) == "write"
                          else cmd_mem_alloc(a) if getattr(a, "mem_action", None) == "alloc"
                          else print("Usage: python -m livetools mem [read|write|alloc]"),
+        "call": cmd_call,
+        "load_level": cmd_load_level,
         "disasm": cmd_disasm,
         "bt": cmd_bt,
         "step": cmd_step,

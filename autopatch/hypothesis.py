@@ -37,7 +37,7 @@ def _read_bytes_from_binary(addr: int, size: int) -> bytes | None:
     try:
         result = subprocess.run(
             [sys.executable, "-m", "retools.readmem", str(binary),
-             hex(addr), f"bytes:{size}"],
+             hex(addr), "bytes", "-n", str(size)],
             capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=10,
         )
         for line in result.stdout.splitlines():
@@ -99,7 +99,7 @@ def _extract_conditional_jumps(disasm_output: str) -> list[dict]:
         if len(parts) < 3:
             continue
 
-        addr_str = parts[0]
+        addr_str = parts[0].rstrip(":")
         if not addr_str.startswith("0x"):
             continue
 
@@ -158,28 +158,28 @@ def generate_from_diagnostic(
     tried_set = set(tried_addrs)
     blacklist_set = set(blacklisted_addrs)
 
-    hypotheses: list[Hypothesis] = []
     hypothesis_counter = 45 + len(tried_addrs)
 
-    for caller_hex in caller_addrs:
-        if len(hypotheses) >= max_hypotheses:
-            break
+    # Phase 1: collect the best untried jump from each caller
+    per_caller_best: list[Hypothesis] = []
+    per_caller_rest: list[Hypothesis] = []
 
+    for caller_hex in caller_addrs:
         try:
             caller_addr = int(caller_hex, 16)
         except ValueError:
             continue
 
-        # Skip addresses outside game .text section
         if caller_addr < 0x401000 or caller_addr > 0x01000000:
+            print(f"  [hyp] Skipping caller {caller_hex} — outside .text")
             continue
 
-        # Disassemble around the caller to find conditional jumps
-        # Start 0x100 bytes before the caller to catch the function prologue
         start = max(0x401000, caller_addr - 0x100)
         disasm = _disassemble_range(start, count=100)
         jumps = _extract_conditional_jumps(disasm)
+        print(f"  [hyp] Caller {caller_hex}: {len(jumps)} conditional jumps found")
 
+        caller_hypotheses: list[Hypothesis] = []
         for jump in jumps:
             addr = jump["addr"]
             size = jump["size"]
@@ -187,23 +187,20 @@ def generate_from_diagnostic(
             if addr in tried_set or addr in blacklist_set:
                 continue
 
-            # Read original bytes — skip if unreadable
             orig = _read_bytes_from_binary(addr, size)
             if orig is None:
                 continue
             nop_bytes = b"\x90" * size
 
-            # Higher confidence for jumps closer to the caller address
             distance = abs(addr - caller_addr)
             confidence = max(0.1, 1.0 - (distance / 0x200))
 
-            # Boost confidence for distance-related jump mnemonics
             mnemonic = jump["mnemonic"].lower()
             if mnemonic in ("jle", "jge", "jl", "jg", "ja", "jb", "jbe", "jae"):
                 confidence = min(1.0, confidence + 0.2)
 
             hypothesis_counter += 1
-            hypotheses.append(Hypothesis(
+            caller_hypotheses.append(Hypothesis(
                 id=f"H{hypothesis_counter:03d}",
                 description=f"NOP {size}-byte {mnemonic} at {hex(addr)} "
                            f"(near caller {caller_hex})",
@@ -218,10 +215,21 @@ def generate_from_diagnostic(
                 source="diagnostic_diff",
             ))
 
-            if len(hypotheses) >= max_hypotheses:
-                break
+        # Sort this caller's hypotheses by confidence
+        caller_hypotheses.sort(key=lambda h: h.confidence, reverse=True)
+        if caller_hypotheses:
+            per_caller_best.append(caller_hypotheses[0])
+            per_caller_rest.extend(caller_hypotheses[1:])
 
-    # Sort by confidence descending
+    # Phase 2: take best from each caller first, then fill with remaining
+    per_caller_best.sort(key=lambda h: h.confidence, reverse=True)
+    per_caller_rest.sort(key=lambda h: h.confidence, reverse=True)
+
+    hypotheses = per_caller_best[:max_hypotheses]
+    remaining_slots = max_hypotheses - len(hypotheses)
+    if remaining_slots > 0:
+        hypotheses.extend(per_caller_rest[:remaining_slots])
+
     hypotheses.sort(key=lambda h: h.confidence, reverse=True)
     return hypotheses
 

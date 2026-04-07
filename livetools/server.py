@@ -268,6 +268,16 @@ class Daemon:
         result = self.api.alloc_memory(cmd["size"])
         return {**self._base_resp(), **result}
 
+    def _cmd_call(self, cmd: dict) -> dict:
+        result = self.api.call_function(
+            cmd["addr"],
+            cmd.get("abi", "default"),
+            cmd.get("retType", "void"),
+            cmd.get("argTypes", []),
+            cmd.get("argValues", []),
+        )
+        return {**self._base_resp(), **result}
+
     def _cmd_disasm(self, cmd: dict) -> dict:
         addr = cmd.get("addr")
         if addr is None:
