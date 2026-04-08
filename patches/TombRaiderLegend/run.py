@@ -702,8 +702,8 @@ def camera_pan_and_screenshot(hwnd, phase_name):
     focus_hwnd(hwnd)
     time.sleep(0.5)
 
-    # Skip cutscene: ESC → UP → RETURN
-    send_keys(hwnd, "ESC WAIT:500 UP WAIT:300 RETURN", delay_ms=0)
+    # Skip cutscene: ESC → wait → W → wait → ENTER
+    send_keys(hwnd, "ESC WAIT:3000 W WAIT:3000 RETURN", delay_ms=0)
     print("  Cutscene skip sent. Waiting 3s for gameplay...")
     time.sleep(3)
 
@@ -947,7 +947,7 @@ def do_test_hash_stability(build_first=False, quick=False):
     from livetools.gamectl import send_keys, focus_hwnd
     focus_hwnd(hwnd3)
     time.sleep(0.5)
-    send_keys(hwnd, "ESC WAIT:500 UP WAIT:300 RETURN", delay_ms=0)
+    send_keys(hwnd3, "ESC WAIT:3000 W WAIT:3000 RETURN", delay_ms=0)
     time.sleep(3)
 
     # Wait additional time for stable attachment

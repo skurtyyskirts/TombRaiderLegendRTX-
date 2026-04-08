@@ -2750,3 +2750,96 @@ livetools dipcnt on
 # wait, move camera
 livetools dipcnt read
 ```
+
+## Static Patch Site Verification — 2026-04-08
+
+### Summary
+
+Verified all key patch sites by comparing the **original binary** (`trl.exe`) against the **memory dump** (`trl_dump_SCY.exe`). The dump has several patches already baked in from a prior runtime session. The proxy DLL applies these patches at load time via `VirtualProtect` + memory write — the original `trl.exe` on disk is unpatched.
+
+### Binary Comparison: Original vs Dump
+
+#### 0x407150 — SceneTraversal_CullAndSubmit (Layer #2)
+
+| Binary | Instruction |
+|--------|-------------|
+| **trl.exe (original)** | `push ebp; mov ebp, esp; and esp, 0xFFFFFFF0; sub esp, 0x1E4` — standard function prologue |
+| **trl_dump_SCY.exe (patched)** | `ret` at 0x407150 — immediate return, function completely disabled |
+
+**Patch**: Single byte `0xC3` (RET) overwrites the `push ebp` (0x55). The rest of the prologue remains intact after the RET but is dead code.
+
+#### 0x60B050 — Light_VisibilityTest (Layer #11)
+
+| Binary | Instruction |
+|--------|-------------|
+| **trl.exe (original)** | `push ebp; mov ebp, esp; and esp, 0xFFFFFFF0; sub esp, 0x3C; push esi` — full visibility test function |
+| **trl_dump_SCY.exe (patched)** | `mov al, 1; ret 4` — always returns TRUE, skips all visibility checks |
+
+**Patch**: 4 bytes `B0 01 C2 04 00` overwrite the prologue. `mov al, 1` sets return value to true; `ret 4` cleans one DWORD argument (stdcall convention).
+
+#### 0x4072BD–0x407B7B — Scene Traversal Cull Jumps (Layer #3, 7 sites)
+
+All 7 conditional jump sites in the original `trl.exe` are patched to NOPs in the dump:
+
+| Address | Original (trl.exe) | Patched (dump) |
+|---------|-------------------|----------------|
+| 0x4072BD | `jne 0x4078CD` (6 bytes) | `nop nop nop ...` |
+| 0x4072D2 | conditional jump | `nop nop nop ...` |
+| 0x407AF1 | conditional jump | `nop nop nop ...` |
+| 0x407B30 | conditional jump | `nop nop nop ...` |
+| 0x407B49 | conditional jump | `nop nop nop ...` |
+| 0x407B62 | conditional jump | `nop nop nop ...` |
+| 0x407B7B | conditional jump | `nop nop nop ...` |
+
+Example: At 0x4072BD the original is `jne 0x4078CD` which skips the render path when a cull condition is true. NOPing it forces fall-through to always render.
+
+#### 0x46C194 — Sector/Portal Visibility (Layer #6)
+
+| Binary | Instruction |
+|--------|-------------|
+| **trl.exe (original)** | `je 0x46C2B5` (6 bytes) — skips sector if portal not visible |
+| **trl_dump_SCY.exe (patched)** | `nop nop nop` — fall-through, all sectors rendered |
+
+#### Build 040 Additional SceneTraversal Exits (Layer #19) — NOT in dump
+
+These 4 addresses show original unpatched code in the dump, meaning they are applied only by the proxy at runtime (not baked into this dump):
+
+| Address | Original Code (both binaries) |
+|---------|-------------------------------|
+| 0x4071CE | `jne 0x4078CD` |
+| 0x407976 | `jne 0x40805A` |
+| 0x407B06 | `je 0x40804E` |
+| 0x407ABC | `je 0x40804E` |
+
+#### 0x46B85A — Camera-Sector Proximity Filter (Layer #21) — NOT in dump
+
+| Binary | Instruction |
+|--------|-------------|
+| Both | `jne 0x46B877` — original code, proxy patches this at runtime |
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x407150 | SceneTraversal_CullAndSubmit — RET patch disables entire function |
+| 0x60B050 | Light_VisibilityTest — force-true patch (mov al,1; ret 4) |
+| 0x4072BD | First of 7 scene traversal cull jumps — NOPed |
+| 0x46C194 | Portal visibility gate — NOPed |
+| 0x4071CE | SceneTraversal exit #1 — proxy runtime patch only |
+| 0x407976 | SceneTraversal exit #2 — proxy runtime patch only |
+| 0x407B06 | SceneTraversal exit #3 — proxy runtime patch only |
+| 0x407ABC | SceneTraversal exit #4 — proxy runtime patch only |
+| 0x46B85A | Camera-sector proximity filter — proxy runtime patch only |
+
+### Details
+
+The `trl_dump_SCY.exe` file is a memory dump captured after some patches were applied. It contains a subset of the full 20-patch set: the core culling disablement (0x407150 RET, 7 NOP sites, portal visibility, light visibility test) but NOT the build 040/044 additions (4 extra SceneTraversal exits, camera-sector filter). Those later patches exist only in the proxy's `TRL_ApplyMemoryPatches` function and are applied at runtime.
+
+### Suggested Live Verification
+
+To confirm all patches are active at runtime:
+- `livetools mem read 0x407150 1` — expect `C3`
+- `livetools mem read 0x60B050 4` — expect `B0 01 C2 04`
+- `livetools mem read 0x4071CE 6` — expect `90 90 90 90 90 90`
+- `livetools mem read 0x407976 6` — expect `90 90 90 90 90 90`
+- `livetools mem read 0x46B85A 6` — expect `90 90 90 90 90 90`
