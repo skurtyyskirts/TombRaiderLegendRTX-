@@ -46,8 +46,10 @@ Decompile TerrainDrawable at 0x40ACF0, cross-reference with cdcEngine decompilat
 ## [2026-04-07] BOOTSTRAP — Autonomous workflow initialized
 - Created CLAUDE.md encoding all institutional knowledge from 44 builds + 116 commits
 - Created CHANGELOG.md for cross-session continuity
-- **ONE blocker remains:** Anchor geometry not submitted at distance (both stage lights vanish)
-- Hash instability is RESOLVED — asset hashes stable, generation hash cosmetic flash only
+- **TWO blockers remain:**
+  1. Anchor geometry not submitted at distance (both stage lights vanish)
+  2. Hash instability — debug geometry view always shows changing colors; never verified with actual Toolkit mesh replacements
+- Hash instability was INCORRECTLY marked as resolved — the claim that generation hash flickering is cosmetic was never verified end-to-end
 - 22 culling layers identified, 20 patched — all exhausted except:
   - **Layer 22: TerrainDrawable (0x40ACF0) — UNEXPLORED, PRIME SUSPECT**
   - Layer 14: LOD alpha fade (0x446580) — unexplored

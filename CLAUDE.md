@@ -59,18 +59,21 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 ### Hash Rule Rationale
 - Asset hash: `indices,texcoords,geometrydescriptor` — excludes clip-space positions for stable material/replacement assignments
 - Generation hash: must include positions (Remix hard-crashes with "Position hash should never be empty" otherwise)
-- Generation hash flashes with camera — this is cosmetic. **Asset hash is stable.**
+- Generation hash includes positions and flickers with camera movement
+- **Asset hash stability has NOT been verified** — no Toolkit mesh replacements have been tested to confirm hashes are truly stable
 
 ## Current Status
 
 ### DONE
 - FFP proxy DLL builds and chains to Remix
 - Transform pipeline (View/Proj/World from VS constants)
-- Asset hash stability (static + moving camera) — **RESOLVED**
+- Asset hash stability (static + moving camera) — **UNRESOLVED** (incorrectly marked as resolved; debug geometry view always shows changing hash colors; never verified with actual Toolkit mesh replacements)
 - Automated test pipeline (two-phase: hash debug + clean render, randomized movement)
 - All 22 identified culling layers investigated; 20 patched
 
-### THE ONE REMAINING BLOCKER: Anchor Geometry Not Submitted at Distance
+### TWO REMAINING BLOCKERS
+
+#### Blocker 1: Anchor Geometry Not Submitted at Distance
 
 **Symptom:** Both stage lights (red + green) vanish when Lara walks away from the stage. Lights are anchored to geometry hashes — when the engine stops submitting anchor geometry as draw calls, Remix loses the anchors and lights disappear.
 
@@ -86,6 +89,15 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 **PRIME SUSPECT:** `TerrainDrawable (0x40ACF0)` / `TERRAIN_DrawUnits` — a SEPARATE terrain rendering path with its own culling. Never decompiled. Never patched.
 
 **PASS criteria:** Both red and green stage lights visible in all 3 clean render screenshots, lights shift as Lara strafes, hashes stable, no crash.
+
+#### Blocker 2: Hash Instability (UNRESOLVED)
+
+**Symptom:** The geometry debug view always shows changing hash colors. This was incorrectly marked as resolved based on a theory that generation hash flickering is cosmetic and asset hashes are stable — but this was never verified with actual RTX Toolkit mesh replacements.
+
+**What's unverified:**
+- No Toolkit mesh replacement has ever been tested to confirm asset hashes are truly stable
+- Generation hash includes positions and flickers with camera — assumed cosmetic, never proven
+- The claim that `indices,texcoords,geometrydescriptor` produces stable asset hashes has not been validated end-to-end
 
 ## 22-Layer Culling Map
 

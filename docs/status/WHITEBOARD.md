@@ -47,9 +47,9 @@
 
 **Additional NOPs tried (builds 037, 040, 041):** RenderLights gate (0x60E3B1), sector light count clear (0x603AE6), far clip stamp (0x10FC910 → 1e30f), 4 additional cull flags in 0x407150 (0x4071CE, 0x407976, 0x407B06, 0x407ABC) — none resolved the issue.
 
-### Problem 2: Hash Instability (Believed Resolved)
+### Problem 2: Hash Instability (UNRESOLVED — incorrectly marked as resolved)
 
-Earlier builds (017, 022) showed hash color shifts on movement. Build 021+ confirmed this was proxy bugs, not engine behavior. TRL skinning is GPU-side (VS constants), VBs are static, so hashes are inherently stable. No hash instability has been observed since the sector visibility patches were added.
+Earlier builds (017, 022) showed hash color shifts on movement. The claim that this was resolved (build 021+) was based on a theory that generation hash flickering is cosmetic and that asset hashes are inherently stable because TRL skinning is GPU-side and VBs are static. **However, this was never verified with actual RTX Toolkit mesh replacements.** The debug geometry view always shows changing hash colors, and no end-to-end test has confirmed that the `indices,texcoords,geometrydescriptor` asset hash rule produces truly stable replacements. Both generation hash and asset hash stability remain unverified in practice.
 
 ---
 
