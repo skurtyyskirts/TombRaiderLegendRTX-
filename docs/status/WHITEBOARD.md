@@ -1,8 +1,7 @@
-# TRL RTX Remix — Results Whiteboard
+# TRL RTX Remix — Live Whiteboard
 
-**Last updated:** 2026-04-08
-**Builds completed:** 001-073 (003-015, 034, 043, 048-063 not preserved)
-**Goal:** Get Tomb Raider Legend rendering correctly with RTX Remix — stable hashes, no culling, anchored lights
+**Updated:** 2026-04-08 · **Builds:** 001–073 (003–015, 034, 043, 048–063 not preserved)  
+**Goal:** Stable hashes, full geometry submission, Remix lights anchored to stage geometry
 
 ---
 
@@ -180,7 +179,7 @@ Every culling mechanism discovered and its patch status:
 
 ---
 
-## What Has NOT Been Tried
+## Untried Ideas
 
 | Idea | Why It Matters | Difficulty |
 |------|----------------|------------|
@@ -275,11 +274,12 @@ FUN_006033d0 / FUN_00602aa0 ← IRRELEVANT (per build 038 root cause reframe)
 
 ## Immediate Next Step
 
-**Verify anchor mesh hashes are correct for the current configuration.** All 31 identified culling layers are patched and active. Draw counts are up (+29% from Layer 31 bypass in build 072). Build 073 shows small white dots that may be stage lights at extreme HDR overexposure. The mod.usda anchor hashes were captured under a different Remix configuration — they may no longer match the current draw calls.
+> **All 31 culling layers patched. +29% draw counts. Build 073 shows white dots — may be the stage lights at extreme HDR overexposure.**
 
-**Two-step verification:**
-1. **Lower light intensity** in mod.usda: reduce sphere light `intensity` from 10000000 to ~1000 and `exposure` from 20 to ~5. If the white dots turn red/green, the anchors are working and intensity was hiding the color.
-2. **Fresh Remix capture**: Do a new `rtx_remix_tools/` capture near the stage area with the current config (`useVertexCapture=False`, Layer 31 bypass active). Compare the hash IDs in the new capture against mod.usda.
+**Two-step anchor hash verification:**
+
+1. **Lower light intensity** — reduce sphere light `intensity` from `10000000` to `~1000` and `exposure` from `20` to `~5`. If the white dots turn red/green, the anchors are working and intensity was hiding the color.
+2. **Fresh Remix capture** — do a new capture near the stage with the current config (`useVertexCapture=False`, Layer 31 bypass active). Compare hash IDs in the new capture against `mod.usda`.
 
 **What was tried and ruled out (builds 038-073):**
 - All 3 light pipeline gates unblocked (build 068)
