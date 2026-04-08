@@ -2,7 +2,7 @@
 
 Port Tomb Raider Legend (2006) to NVIDIA RTX Remix for full path-traced lighting, stable geometry hashes, and complete scene visibility.
 
-**68 builds completed. All known culling layers patched. Anchor geometry not submitted — mesh streaming / sector traversal is the remaining blocker.**
+**73 builds completed. All 30 culling layers patched. FLOAT3 character draws fixed (Lara now visible). Anchor geometry hashes unconfirmed at current spawn — fresh Remix capture needed.**
 
 ---
 
@@ -32,7 +32,7 @@ Remix also anchors scene lights to geometry draw calls. When TRL's culling syste
 | **Both stage lights stable at all positions** | **In progress** |
 
 **Last confirmed PASS:** `build-019` — both lights visible, hashes stable.  
-**Latest:** `build-068` — all light pipeline gates re-enabled (no crash); anchor geometry still not submitted.
+**Latest:** `build-073` — `useVertexCapture=True` test; white dots present (possible overexposed lights); fresh hash capture needed to confirm anchor mesh identity.
 
 Full status: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md) — culling layer map, build history, decision tree, key addresses.
 
@@ -118,6 +118,7 @@ c48+:    Skinning bone matrices (3 regs/bone)
 | `MeshSubmit_VisibilityGate` | `return 0` | Mesh-level visibility pre-check always passes |
 | Stream unload gate | NOP | Prevents mesh stream eviction on camera movement |
 | Mesh eviction (3 sites) | NOP | `SectorEviction` × 2 + `ObjectTracker_Evict` |
+| `RenderQueue_FrustumCull` (0x40C430) | JMP → 0x40C390 | Redirects recursive BVH frustum culler to uncull path — Layer 30 |
 
 Full patch list: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md).
 

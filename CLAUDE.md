@@ -5,7 +5,7 @@
 - **Project:** Vibe Reverse Engineering toolkit — D3D9 FFP proxy DLL + RE tools for RTX Remix compatibility
 - **Repo:** github.com/skurtyyskirts/TombRaiderLegendRTX-
 - **Owner:** Jeffrey (skurtyyskirts), Temple TX
-- **Builds completed:** 001–068 (003–015, 034, 043, 048–063 not preserved)
+- **Builds completed:** 001–073, 071b (003–015, 034, 043, 048–063 not preserved)
 
 ## DLL Chain
 ```
@@ -13,7 +13,7 @@ NvRemixLauncher32.exe → trl.exe → dxwrapper.dll → d3d9.dll (FFP proxy) →
 ```
 
 ## Architecture Summary
-TRL renders exclusively through programmable vertex shaders. RTX Remix requires Fixed-Function Pipeline (FFP). The proxy intercepts D3D9 calls, reconstructs W/V/P matrices from VS constants, and feeds them to Remix through FFP calls — so Remix sees TRL as a native FFP game. The proxy also patches 30 identified culling layers at runtime via `VirtualProtect` + memory write.
+TRL renders exclusively through programmable vertex shaders. RTX Remix requires Fixed-Function Pipeline (FFP). The proxy intercepts D3D9 calls, reconstructs W/V/P matrices from VS constants, and feeds them to Remix through FFP calls — so Remix sees TRL as a native FFP game. The proxy also patches 31 identified culling layers at runtime via `VirtualProtect` + memory write. FLOAT3 character draws (Lara's model) are now correctly processed through FFP as of build 071b.
 
 ### VS Constant Register Layout (TRL-specific)
 ```
@@ -69,29 +69,25 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 - FFP proxy DLL builds and chains to Remix
 - Transform pipeline (View/Proj/World from VS constants)
 - Automated test pipeline (two-phase: hash debug + clean render, camera pan)
-- All 30 identified culling layers investigated; 28 patched (all 3 light pipeline gates re-enabled and confirmed crash-free, build 068)
+- All 31 identified culling layers patched (all 3 light pipeline gates re-enabled crash-free, build 068; Layer 31 bypass via JMP 0x40C430→0x40C390, build 072)
 - SHORT4→FLOAT3 VB expansion with content fingerprint cache
 - ProcessPendingRemovals crash fix at 0xEE88AD
+- FLOAT3 draw path fixed — null VS before FLOAT3 draws; Lara now visible (build 071b)
 
 ### TWO REMAINING BLOCKERS
 
-#### Blocker 1: Anchor Geometry Not Submitted at Distance
+#### Blocker 1: Anchor Mesh Hashes Unverified
 
-**Symptom:** Both stage lights (red + green) vanish when Lara walks away from the stage. Lights are anchored to geometry hashes — when the engine stops submitting anchor geometry as draw calls, Remix loses the anchors and lights disappear.
+**Symptom:** Stage lights absent. Build 073 (`useVertexCapture=True`) shows small white dots that may be the stage lights at extreme HDR overexposure (intensity=10000000, exposure=20). Color is unverifiable.
 
-**Root cause reframed (build 038):** The "red light at distance" in builds 019–037 was actually the fallback light (`rtx.fallbackLightRadiance`). With neutral white fallback, BOTH stage lights gone at distance. Problem is geometry submission, NOT light culling.
+**Root cause hypothesis:** The 8 anchor mesh hashes in mod.usda were captured under a different Remix configuration. Current config (`useVertexCapture=False`, Layer 31 bypass active) may produce different hash IDs for the same geometry. The white dots in build 073 suggest some geometry IS being submitted.
 
 **What's been exhausted:**
-- All 11 conditional exits in `SceneTraversal_CullAndSubmit` (0x407150) NOPed — draw counts ~190K, still fails
-- Sector/portal visibility NOPed (65× draw count increase)
-- Light_VisibilityTest force-true, light frustum NOPs, sector light count gate
-- Far clip stamped to 1e30f, frustum threshold to -1e30f
-- Camera-sector proximity filter NOPed
-- All 3 identified render paths patched: (1) RenderVisibleSectors→RenderSector, (2) SceneTraversal wrapper→0x407150, (3) moveable object loop at 0x40E2C0
-- TerrainDrawable decompiled (build 2026-04-08): `0x40ACF0` is a constructor, real draw at `0x40AE20`; shares same 3-layer sector architecture as regular meshes
-- All 30 culling layers patched and confirmed active simultaneously (build 068, no crash)
+- All 31 culling layers patched (build 072, no crash, +29% draw counts)
+- FLOAT3 draw path fixed (build 071b)
+- RenderQueue_FrustumCull bypass (build 072)
 
-**PRIME SUSPECT:** `RenderQueue_FrustumCull` at `0x40C430` — Layer 3 recursive bounding-volume frustum culler operating AFTER all patched submission gates. Drops objects outside view frustum before DrawIndexedPrimitive. Redirect entry to `0x40C390` (uncull path) to bypass.
+**NEXT STEP:** Lower mod light intensity to ~1000 to confirm white dots are colored. Then do a fresh Remix capture to validate anchor mesh hashes.
 
 **PASS criteria:** Both red and green stage lights visible in all 3 clean render screenshots, lights shift as Lara strafes, hashes stable, no crash.
 
@@ -104,12 +100,12 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 - Generation hash includes positions and flickers with camera — assumed cosmetic, not proven
 - The `indices,texcoords,geometrydescriptor` rule has not been validated with actual mod replacements
 
-## 30-Layer Culling Map
+## 31-Layer Culling Map
 
 | # | Layer | Address(es) | Patched? | Build |
 |---|-------|------------|----------|-------|
 | 1 | Frustum distance threshold | 0xEFDD64 | Yes — -1e30f per BeginScene | 016 |
-| 2 | Per-object frustum function | 0x407150 | Yes — RET at entry | 016 |
+| 2 | Per-object frustum function | 0x407150 | Yes — 11 NOP jumps inside function (NOT RET at entry) | 016 |
 | 3 | Scene traversal cull jumps (7×) | 0x4072BD, 0x4072D2, 0x407AF1, 0x407B30, 0x407B49, 0x407B62, 0x407B7B | Yes — all NOPed | 016 |
 | 4 | D3D backface culling | SetRenderState | Yes — D3DCULL_NONE | 016 |
 | 5 | Cull mode globals | 0xF2A0D4/D8/DC | Yes — stamped per scene | 029 |
@@ -137,7 +133,8 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 | 27 | Post-sector bitmask/distance culls | 0x40E30F, 0x40E3B0 | Yes — NOPed | 045–063 |
 | 28 | Stream unload gate | 0x415C51 | Yes — NOPed | 045–063 |
 | 29 | Mesh eviction | SectorEviction (×2) + ObjectTracker_Evict | Yes — all 3 NOPed | 045–063 |
-| 30 | **Render queue frustum culler** | **0x40C430 (RenderQueue_FrustumCull)** | **NOT PATCHED — PRIME SUSPECT** | — |
+| 30 | Render queue frustum culler | 0x40C430 (RenderQueue_FrustumCull) | Yes — JMP to 0x40C390 (uncull path); +29% draws | 072 |
+| 31 | LOD alpha fade | 0x446580 | **UNEXPLORED** | — |
 
 ## Known Dead Ends — DO NOT RETRY
 
@@ -155,15 +152,17 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 | 10 | Remove `positions` from asset hash | Catastrophic hash collision — all geometry gets same hash; positions required | 047 |
 | 11 | Draw cache disabled (`DRAW_CACHE_ENABLED 0`) | No effect — cache only replays 3 draws, stale pointer concern unfounded | 066 |
 | 12 | Remove VP inverse epsilon threshold | No effect — VP changes are large enough to always trigger recalculation | 067 |
+| 13 | RenderQueue_FrustumCull bypass (0x40C430 → 0x40C390) | +29% draws, no crash — but lights still absent; anchor hash mismatch likely cause | 072 |
 
 ## What Has NOT Been Tried
 
 | Idea | Why It Matters | Difficulty |
 |------|---------------|------------|
-| **Patch RenderQueue_FrustumCull (0x40C430)** | Prime suspect: Layer 3 recursive frustum culler — redirect entry to 0x40C390 (uncull path) | Easy — single `mem write` at runtime |
-| dx9tracer frame diff: near stage vs far | Definitively shows which draw calls (and hashes) disappear — confirms geometry is never submitted | Medium |
-| Livetools memory search for anchor hashes | Determine if anchor mesh objects exist in scene graph at all — distinguishes "not loaded" from "not drawn" | Easy |
-| Anchor to Lara's always-drawn mesh | Find Lara's body hash — she's always rendered; anchor lights to her guarantees visibility | Easy |
+| **Lower mod light intensity** (intensity=10000000 → ~1000) | Build 073 white dots may be lights at extreme HDR overexposure — lower intensity to confirm they're colored | Easy |
+| **Fresh Remix capture** to update mod.usda hashes | Anchor hashes captured under different Remix config; current draw calls may hash differently | Easy |
+| dx9tracer frame diff: near stage vs far | Definitively shows which draw calls disappear — confirms geometry submission | Medium |
+| Livetools memory search for anchor hashes | Determines if anchor mesh objects exist in scene graph at all | Easy |
+| Anchor to Lara's always-drawn mesh | Lara's hash is visible in build 071b+; anchor lights to her for guaranteed visibility | Easy |
 | Investigate per-object flags at [obj+8] | Bits 0x01/0x02/0x04 may independently gate draw submission (proxy only NOPs `test bit 0x10`) | Medium |
 | LOD alpha fade at 0x446580 | 10 callers — may fade geometry invisible at distance | Medium |
 | Draw call replay in proxy | Record anchor DIP calls on first frame; replay every subsequent frame unconditionally | Hard |
@@ -180,7 +179,7 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 | `automation/` | Screenshot automation and test replay infrastructure |
 | `patches/TombRaiderLegend/` | Runtime patches applied by proxy |
 | `docs/` | Full documentation — research, reference, guides |
-| `docs/status/WHITEBOARD.md` | **Live status** — 30-layer culling map, build history, decision tree |
+| `docs/status/WHITEBOARD.md` | **Live status** — 31-layer culling map, build history, decision tree |
 | `docs/status/TEST_STATUS.md` | Build-by-build pass/fail results |
 | `TRL tests/` | Test build archive — every build with SUMMARY.md, screenshots, proxy log, source |
 | `TRL traces/` | Full-frame D3D9 API captures |

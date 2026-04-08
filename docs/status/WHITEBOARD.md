@@ -1,7 +1,7 @@
 # TRL RTX Remix — Results Whiteboard
 
-**Last updated:** 2026-04-07
-**Builds completed:** 001-068 (003-015, 034, 043, 048-063 not preserved)
+**Last updated:** 2026-04-08
+**Builds completed:** 001-073 (003-015, 034, 043, 048-063 not preserved)
 **Goal:** Get Tomb Raider Legend rendering correctly with RTX Remix — stable hashes, no culling, anchored lights
 
 ---
@@ -89,6 +89,7 @@ Every culling mechanism discovered and its patch status:
 | 28. Stream unload gate | 0x415C51 | Unloads mesh streams on camera movement | Yes — NOPed | 045-063 |
 | 29. Mesh eviction | SectorEviction (×2) + ObjectTracker_Evict | Removes meshes from scene tracking on eviction | Yes — all 3 NOPed | 045-063 |
 | 30. Post-sector loop | Unknown | Secondary loop after main sector pass | Yes — enabled | 045-063 |
+| 31. **Render queue frustum culler** | **0x40C430 (RenderQueue_FrustumCull)** | **Layer 3 recursive BVH frustum cull — drops objects outside view frustum** | **Yes — JMP → 0x40C390 (uncull path)** | **072** |
 
 ---
 
@@ -168,8 +169,14 @@ Every culling mechanism discovered and its patch status:
 | 066 | FAIL | Theory 1: disable draw cache (`DRAW_CACHE_ENABLED 0`) | No effect — draw cache only replays 3 draws; stale pointer concern was unfounded |
 | 067 | FAIL | Theory 2: remove VP inverse epsilon threshold | No effect — VP changes on camera pan are large enough to always trigger recalculation |
 | 068 | FAIL | Theory 3: re-enable all 3 light patches (LightVisTest + sector gate + RenderLights gate) | **No crash** — ProcessPendingRemovals fix resolved the 0xEE88AD crash. All 20+ patches active and confirmed. Lights still absent — upstream geometry not submitted |
+| 069 | FAIL | Hash stability test (dipcnt instrumentation issue) | dipcnt hook failed; draw counts from proxy log only (~670-694 gameplay). ~75% of initial draws culled despite patches. Patch integrity confirmed |
+| 070 | FAIL | Hash stability test with `positions` in asset hash; anti-culling disabled | Draw counts collapsed 93% over session (2833 → 185). Proxy uses 11 internal NOP jumps at 0x407150, NOT a RET at entry |
+| 071 | FAIL | Added 3 additional anchor mesh hashes to mod.usda (5 → 8 total) | Lara not visible (FLOAT3 draws unpatched); draw counts stable ~2845; no lights |
+| 071b | FAIL | FLOAT3 draw path fix — null VS before FLOAT3 draws | **Lara now visible for first time** — FLOAT3 branch correctly goes through FFP. Stage lights still absent. Black triangle artifact at feet |
+| 072 | FAIL | RenderQueue_FrustumCull bypass — JMP 0x40C430 → 0x40C390 (Layer 31) | Draw counts +29% (2845 → 3657). Lara visible in hash debug. No crash. **Lights still absent** — anchor hashes may be stale (different config at capture) |
+| 073 | FAIL | `rtx.useVertexCapture = True` | Draw counts ~3651. Small white dots visible — possibly stage lights at extreme HDR overexposure (intensity=10000000, exposure=20). Color unresolvable at current settings |
 
-**Conclusion (build 068):** All three light pipeline gates are re-enabled and safe. The problem is definitively upstream: the mesh geometry that Remix lights anchor to is never submitted as a `DrawIndexedPrimitive` call at the tested camera positions. This is not a light culling issue — it is a geometry submission issue.
+**Conclusion (builds 069-073):** All 31 identified culling layers are now patched. FLOAT3 draws are fixed (Lara visible). Layer 31 bypass increased draw counts +29% but lights are still absent. Primary hypothesis: anchor mesh hashes in mod.usda were captured under different Remix settings and don't match current draw calls. A fresh Remix capture is needed.
 
 ---
 
@@ -177,16 +184,16 @@ Every culling mechanism discovered and its patch status:
 
 | Idea | Why It Matters | Difficulty |
 |------|----------------|------------|
-| dx9tracer frame diff: near stage vs far | Definitively shows which draw calls (and which hashes) disappear — confirms whether anchor mesh is ever submitted | Medium |
-| Livetools memory search for anchor hash values | Determines if anchor mesh objects exist in the scene graph at all — distinguishes "not loaded" from "not drawn" | Easy |
-| Trace draw call backtraces near stage vs far | Identifies which submission path handles the missing geometry (SceneTraversal vs other) | Medium |
-| Force sector mesh loading | Stamp all sector enable flags; trace which sectors contain anchor meshes | Medium |
+| **Fresh Remix capture — regenerate mod.usda hashes** | Anchor hashes in mod.usda were captured under different settings; current draw calls may have different hashes entirely. Capture a frame near the stage and compare mesh IDs | Easy |
+| **Lower mod light intensity** | Mod lights have `intensity=10000000, exposure=20` — HDR clips to white, making color unverifiable. Lower to ~1000/5 to see if white dots are red/green | Easy |
+| dx9tracer frame diff: near stage vs far | Definitively shows which draw calls disappear — confirms whether anchor mesh is ever submitted at tested positions | Medium |
+| Livetools memory search for anchor hash values | Determines if anchor mesh objects exist in the scene graph near vs far — distinguishes "not loaded" from "not drawn" | Easy |
+| Trace draw call backtraces near stage vs far | Identifies which submission path handles the missing geometry | Medium |
 | Anchor to Lara's always-drawn mesh | Find Lara's body hash; anchor lights to her — she's always rendered | Easy |
-| Investigate portal/PVS traversal | Sector graph may exclude anchor mesh sectors when camera is rotated; individual cull NOPs are downstream | Hard |
+| Investigate portal/PVS traversal | Sector graph may exclude anchor mesh sectors on camera rotation; individual NOPs are downstream | Hard |
 | Patch LOD alpha fade at 0x446580 | 10 callers, may fade geometry at distance | Medium |
-| Per-object visibility flags at [obj+8] bits 0x01/0x02/0x04 | Proxy NOPs only the `test bit 0x10` visibility check; other bits in the per-object bitfield may independently gate draw submission (build 064) | Medium |
-| Audit proxy DIP routing for object-type filtering | Light-anchor mesh objects may have a type or flag that causes them to be filtered before the proxy routes them to Remix — no proxy code currently checks for this (build 065) | Medium |
-| Characterize `useVertexCapture=True` hash instability | Build 068 identifies clip-space hash drift under `useVertexCapture=True` as a separate blocker from the geometry-submission problem; not yet reproduced or characterized with the current proxy | Easy |
+| Per-object visibility flags at [obj+8] bits 0x01/0x02/0x04 | Proxy NOPs only `test bit 0x10`; other bits may independently gate draw submission | Medium |
+| Force sector mesh loading | Stamp all sector enable flags; trace which sectors contain anchor meshes | Medium |
 
 ---
 
@@ -268,40 +275,41 @@ FUN_006033d0 / FUN_00602aa0 ← IRRELEVANT (per build 038 root cause reframe)
 
 ## Immediate Next Step
 
-**Determine if anchor geometry is ever in memory.** All 30 identified culling layers are patched and active. Build 068 confirmed 20+ patches active simultaneously with no crash. Yet the anchor mesh draw calls are absent. The question is whether the geometry is:
+**Verify anchor mesh hashes are correct for the current configuration.** All 31 identified culling layers are patched and active. Draw counts are up (+29% from Layer 31 bypass in build 072). Build 073 shows small white dots that may be stage lights at extreme HDR overexposure. The mod.usda anchor hashes were captured under a different Remix configuration — they may no longer match the current draw calls.
 
-1. **In memory but not drawn** — a submission path we haven't patched
-2. **Never loaded** — a streaming/sector loading issue; patches prevent eviction but cannot force initial load
+**Two-step verification:**
+1. **Lower light intensity** in mod.usda: reduce sphere light `intensity` from 10000000 to ~1000 and `exposure` from 20 to ~5. If the white dots turn red/green, the anchors are working and intensity was hiding the color.
+2. **Fresh Remix capture**: Do a new `rtx_remix_tools/` capture near the stage area with the current config (`useVertexCapture=False`, Layer 31 bypass active). Compare the hash IDs in the new capture against mod.usda.
 
-Two parallel tracks:
-1. **Livetools memory search**: Search live process memory for anchor hash patterns (`mesh_5601C7C6...` etc.) to determine if the objects exist in the scene graph at all near vs far positions.
-2. **dx9tracer frame diff**: Capture one frame near stage, one frame far. Diff the draw call list to identify exactly which hashes disappear — proves whether the geometry is being submitted at all.
-
-**What was tried and ruled out (builds 038-068):**
-- All 3 light pipeline gates unblocked (build 068) — not the issue; geometry never reaches light system
-- All 11 exits in SceneTraversal_CullAndSubmit NOPed (build 040) — not the issue
-- Far clip stamp to 1e30f (build 041) — no effect
-- Camera-sector proximity filter NOPed (build 044) — no effect
-- Terrain cull gate NOPed (builds 045-063) — no effect
-- MeshSubmit_VisibilityGate → return 0 (builds 045-063) — no effect
-- Stream unload gate + mesh eviction NOPed (builds 045-063) — prevents eviction; geometry still absent
-- Draw cache disabled (build 066) — no effect
-- VP inverse epsilon removed (build 067) — no effect
+**What was tried and ruled out (builds 038-073):**
+- All 3 light pipeline gates unblocked (build 068)
+- All 11 exits in SceneTraversal_CullAndSubmit NOPed (build 040)
+- Far clip stamp to 1e30f (build 041)
+- Camera-sector proximity filter NOPed (build 044)
+- Terrain cull gate NOPed (builds 045-063)
+- MeshSubmit_VisibilityGate → return 0 (builds 045-063)
+- Stream unload gate + mesh eviction NOPed (builds 045-063)
+- Draw cache disabled (build 066)
+- VP inverse epsilon removed (build 067)
+- RenderQueue_FrustumCull bypass JMP 0x40C430→0x40C390 (build 072) — added draws but lights still absent
+- useVertexCapture=True (build 073) — white dots visible but color unverifiable at current intensity
 
 ---
 
 ## Decision Tree for Next Failure
 
 ```
-Both lights gone (confirmed builds 038-068, 20+ patches active)
-├── Livetools memory search: do anchor mesh objects exist in scene graph?
-│   ├── NOT FOUND near stage → geometry never loaded into memory
-│   │   └── Investigate sector/stream loading path — patches prevent eviction but not initial load
-│   └── FOUND → geometry exists but submission path not covered
-│       ├── dx9tracer diff: capture near + far, diff draw call lists
-│       │   ├── Anchor draws absent at far → find the submission path (4th render path?)
-│       │   └── Anchor draws present at far → Remix side issue (anchor config, light range)
-│       └── Trace draw backtraces: identify which path handles anchor mesh at near position
-├── Fallback: anchor lights to Lara's body mesh (always rendered, always in camera sector)
-└── Fallback: Option B — draw call replay in proxy (record anchor DIP calls, replay every frame)
+White dots visible (build 073) — possible overexposed lights
+├── Lower mod intensity (1000/5) + test
+│   ├── Dots turn red/green → lights ARE working, intensity was hiding color → PASS
+│   └── Dots stay white or disappear → hash mismatch
+│       └── Fresh Remix capture: compare new hashes vs mod.usda
+│           ├── Hashes match → some other issue (range, visibility)
+│           └── Hashes differ → update mod.usda with new hashes → test
+├── If still no lights after hash fix:
+│   ├── Livetools memory search: do anchor mesh objects exist in scene graph?
+│   │   ├── NOT FOUND → geometry never loaded → investigate sector stream loading
+│   │   └── FOUND → submission path not covered
+│   └── dx9tracer frame diff near vs far: which draw calls disappear?
+└── Fallback: anchor lights to Lara's body mesh (always rendered)
 ```

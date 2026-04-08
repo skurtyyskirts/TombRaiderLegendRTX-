@@ -22,10 +22,12 @@ This directory contains every test build from the project, committed in order. E
 | Sector / portal visibility disabled | Done |
 | Per-light culling gates disabled | Done |
 | SHORT4 → FLOAT3 VB expansion + fingerprint cache | Done |
+| FLOAT3 character draws (Lara visible) | Done |
+| RenderQueue_FrustumCull (Layer 31) bypassed | Done |
 | **Both stage lights stable at all positions** | **Failing** |
 
 Last confirmed PASS: `build-019` (both lights visible, hashes stable).  
-Latest build: `build-068` — all light patches re-enabled; anchor geometry still not submitted.
+Latest build: `build-073` — `useVertexCapture=True` test; white dots visible (possible overexposed lights); fresh hash capture needed.
 
 ---
 
@@ -113,6 +115,19 @@ Latest build: `build-068` — all light patches re-enabled; anchor geometry stil
 | [066](build-066-theory1-draw-cache-disabled-FAIL-lights-missing) | FAIL | Theory 1: disabling draw cache has no effect |
 | [067](build-067-theory2-vp-inverse-no-threshold-FAIL-lights-missing) | FAIL | Theory 2: removing VP inverse epsilon has no effect |
 | [068](build-068-theory3-light-patches-reenabled-FAIL-lights-missing) | FAIL | Theory 3: light patches re-enabled — **no crash**; all 20+ patches confirmed; lights still absent |
+
+---
+
+### Phase 6 — Advanced Culling + Config Experiments (Builds 069–073)
+
+| Build | Result | Key Finding |
+|-------|--------|-------------|
+| [069](build-069-hash-stability-FAIL-lights-missing) | FAIL | dipcnt hook failed; proxy log shows ~75% of draws culled despite patches |
+| [070](build-070-hash-stability-FAIL-lights-missing) | FAIL | Draw counts collapsed 93% over session; proxy uses NOP-jump strategy (not RET) at 0x407150 |
+| [071](build-071-hash-stability-FAIL-lights-missing) | FAIL | Expanded mod.usda to 8 anchor hashes; no lights; Lara not visible (FLOAT3 unpatched) |
+| [071b](build-071b-FLOAT3-FFP-lara-visible-FAIL-lights-missing) | FAIL | **Lara now visible** — FLOAT3 draw path fixed (null VS before draw); lights still absent |
+| [072](build-072-frustumcull-bypass-FAIL-lights-missing) | FAIL | RenderQueue_FrustumCull bypass (0x40C430→0x40C390); draw counts +29% (2845→3657); no lights |
+| [073](build-073-vertexcapture-true-FAIL-lights-missing) | FAIL | `useVertexCapture=True`; white dots in screenshots — possibly overexposed stage lights (HDR clipping) |
 
 \* False positive — Lara didn't move or wrong screenshots evaluated.
 

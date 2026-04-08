@@ -1,8 +1,8 @@
 # TRL RTX Remix — Test Status Report
 
-**Last reviewed:** 2026-04-07
-**Builds reviewed:** 001, 002, 016–033, 035–042, 044–047, 064–068 (003–015, 034, 043, 048–063 not preserved)
-**Overall status:** FAILING — anchor mesh geometry never submitted to renderer; all 30 known culling layers patched; root cause is geometry loading or a fourth submission path.
+**Last reviewed:** 2026-04-08
+**Builds reviewed:** 001, 002, 016–033, 035–042, 044–047, 064–073 (003–015, 034, 043, 048–063 not preserved)
+**Overall status:** FAILING — lights absent; all 31 culling layers patched; FLOAT3 draws fixed (Lara visible); anchor mesh hashes unverified for current Remix config.
 
 ---
 
@@ -36,21 +36,19 @@
 
 ### What Fails
 
-1. **Both stage lights disappear when Lara walks away from the stage.** Root cause reframed in build 038: the "red light at distance" in earlier builds was the RTX fallback light (`rtx.fallbackLightRadiance`). With a neutral fallback, both lights vanish — the problem is anchor geometry not being submitted as draw calls, not light culling functions.
+1. **Stage lights absent.** Build 073 shows small white dots — possibly the stage lights at extreme HDR overexposure (intensity=10000000, exposure=20). Color is unverifiable at current settings. Need to lower intensity to confirm.
 
-2. **Anchor geometry not in submitted draw calls.** All 30 known culling layers are patched and confirmed active (build 068: 20+ patches in proxy log simultaneously, no crash). The anchor mesh draw calls simply do not appear in `DrawIndexedPrimitive` at tested camera positions.
+2. **Anchor mesh hashes unverified.** The 8 hashes in mod.usda were captured under a different Remix config (possibly with `useVertexCapture=True`). Current config has `useVertexCapture=False` and Layer 31 bypass active — hashes may differ. No fresh capture has been done.
 
-3. **Root cause unknown: loaded vs not submitted.** The geometry may either: (a) never be loaded into memory at the tested spawn point, or (b) exist in memory but go through a submission path not yet patched. A livetools memory search and/or dx9tracer frame diff would resolve this.
-
-4. **LOD alpha fade unpatched.** `0x446580` with 10 callers may fade geometry at distance. Low priority.
+3. **LOD alpha fade unpatched.** `0x446580` with 10 callers may fade geometry at distance. Low priority.
 
 ### Hurdles
 
-1. **All patches active simultaneously, still fails.** Build 068 confirmed 20+ patches active with no crash. The anchor geometry simply does not appear in any draw call at tested positions. No individual culling patch resolves it.
+1. **All 31 patches active simultaneously, still failing.** Build 072 confirmed 31 patches active with no crash and +29% draw counts. Lights still absent.
 
-2. **Light patches are now safe.** The ProcessPendingRemovals fix (builds 045-063) resolved the crash at 0xEE88AD. `Light_VisibilityTest`, sector light count gate, and RenderLights gate are all re-enabled as of build 068 — but irrelevant until anchor geometry is submitted.
+2. **FLOAT3 draws now fixed.** Build 071b: nulling VS before FLOAT3 draws puts character geometry through FFP correctly. Lara is now visible in clean render screenshots.
 
-3. **dx9tracer frame diff not yet done.** A near-vs-far frame capture would definitively show which draw calls (and which geometry hashes) disappear — confirming whether the anchor mesh is ever submitted at all.
+3. **Hash origin uncertain.** White dots in build 073 suggest lights may actually be submitting — but the anchor hashes in mod.usda have never been verified against a fresh Remix capture at the current test position.
 
 ---
 
@@ -121,6 +119,12 @@
 | 066 | FAIL | Disable draw cache (`DRAW_CACHE_ENABLED 0`) | No effect — draw cache only replays 3 draws |
 | 067 | FAIL | Remove VP inverse epsilon threshold | No effect — VP changes are large enough to always trigger recalculation |
 | 068 | FAIL | Re-enable all 3 light patches (LightVisTest + sector gate + RenderLights gate) | No crash — ProcessPendingRemovals fix resolved 0xEE88AD; all 20+ patches confirmed; lights still absent |
+| 069 | FAIL | Hash stability test (dipcnt failed) | ~670-694 draws/frame; 75% of initial draws culled; patch integrity confirmed |
+| 070 | FAIL | Hash stability, anti-culling disabled for baseline | Draw counts collapsed 93% (2833→185); proxy uses internal NOP jumps not RET at 0x407150 |
+| 071 | FAIL | Added 3 anchor hashes to mod.usda (5→8 total) | Lara not visible; ~2845 draws; no lights |
+| 071b | FAIL | FLOAT3 draw path fix — null VS before FLOAT3 draws | **Lara now visible** — FLOAT3 geometry through FFP for first time; lights still absent |
+| 072 | FAIL | RenderQueue_FrustumCull bypass (0x40C430 → 0x40C390) | +29% draws (2845→3657); Lara in hash debug; no crash; lights still absent |
+| 073 | FAIL | `rtx.useVertexCapture = True` | ~3651 draws; white dots visible in screenshots — possible overexposed stage lights |
 
 *False positive — movement input not reaching game or Lara didn't move.
 
@@ -164,36 +168,35 @@
 - [x] Mesh eviction NOPed: SectorEviction (×2) + ObjectTracker_Evict (builds 045-063)
 - [x] Post-sector loop enabled + post-sector bitmask/distance culls NOPed (builds 045-063)
 - [x] All 3 light pipeline gates re-enabled and confirmed crash-free (build 068)
+- [x] FLOAT3 draw path fixed — null VS before FLOAT3 draws (build 071b); Lara now visible in all renders
+- [x] RenderQueue_FrustumCull (0x40C430) bypassed via JMP → 0x40C390 — Layer 31 (build 072)
+- [x] Extended anchor mesh hashes in mod.usda from 5 to 8 (build 071)
 
 ---
 
 ## What Still Needs to Be Done
 
-### Blocking — Anchor Geometry Root Cause
+### Immediate — Verify Anchor Hashes
 
-- [ ] **Livetools memory search**: Search live process memory for anchor mesh objects (`mesh_5601C7C67406C663`, etc.) near stage vs far — determines if geometry is loaded vs not submitted
-- [ ] **dx9tracer frame diff**: capture near stage + far, diff draw call lists — identifies which draw calls (and hashes) disappear
-- [ ] **Trace draw backtraces** near stage vs far: identifies which submission path handles anchor mesh geometry
+- [ ] **Lower mod light intensity**: reduce sphere light `intensity` from 10000000 to ~1000 and `exposure` from 20 to ~5. If white dots from build 073 turn red/green, lights are working and intensity was hiding color
+- [ ] **Fresh Remix capture**: capture a frame near the stage with the current config; compare new mesh hashes against mod.usda entries
+- [ ] **Update mod.usda** with corrected hashes if fresh capture reveals a mismatch
 
-### If Geometry Is Loaded But Not Submitted
+### If Hashes Are Correct but Lights Still Absent
 
-- [ ] **Trace which submission path** handles the anchor meshes at close range — use `livetools dipcnt callers` to histogram DIP callers, compare near vs far
-- [ ] **Investigate portal/PVS traversal** — sector graph may exclude anchor mesh sectors on camera rotation; all individual NOPs are downstream of sector selection
-
-### If Geometry Is Never Loaded
-
-- [ ] **Investigate sector mesh loading path** — patches prevent eviction but don't force initial load for sectors not in initial streaming set
-- [ ] **Force sector loading**: stamp all sector enable flags; determine which sectors contain anchor meshes
+- [ ] **Livetools memory search**: search live process memory for anchor mesh objects near stage vs far — distinguishes "not loaded" from "not drawn"
+- [ ] **dx9tracer frame diff**: capture near stage + far, diff draw call lists — identifies which draw calls disappear
+- [ ] **Trace draw backtraces** near stage vs far: identifies which submission path handles the anchor geometry
 
 ### Fallback Options
 
-- [ ] **Option A — Anchor to Lara's mesh:** Identify Lara's body mesh hash; anchor both stage lights to her — always rendered, always in camera sector
-- [ ] **Option B — Draw call replay in proxy:** Record anchor mesh DIP calls on first frame; replay every subsequent frame regardless of distance
+- [ ] **Anchor to Lara's mesh:** Identify Lara's body mesh hash (now visible in build 071b+); anchor both stage lights to her — always rendered
+- [ ] **Draw call replay in proxy:** Record anchor mesh DIP calls on first frame; replay every subsequent frame
 
 ### Lower Priority
 
 - [ ] Investigate LOD alpha fade at `0x446580` (10 callers) — may fade geometry at distance
-- [ ] Fix Phase 1 load timing bug: 15s wait insufficient for Remix+Peru (need ~25-30s or gameplay detection)
+- [ ] Fix Phase 1 load timing bug: 15s wait insufficient for Remix+Peru
 
 ---
 
