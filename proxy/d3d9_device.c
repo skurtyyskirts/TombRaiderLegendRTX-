@@ -1214,6 +1214,8 @@ static int __stdcall WD_Present(WrappedDevice *self, void *a, void *b, void *c, 
     return hr;
 }
 
+static void TRL_ApplyMemoryPatches(WrappedDevice *self);
+
 /* 41: BeginScene — behavioral resets only (ffpActive, ffpSetup).
  * Counter resets happen in EndScene to capture the full multi-scene frame.
  * dxwrapper calls SwapChain::Present (not Device::Present), so we use
