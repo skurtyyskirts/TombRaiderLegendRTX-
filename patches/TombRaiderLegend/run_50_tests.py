@@ -16,7 +16,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 SCREENSHOTS_DIR = SCRIPT_DIR / "screenshots"
-NVIDIA_DIR = Path(r"C:\Users\skurtyy\Videos\NVIDIA\Tomb Raider  Legend")
+sys.path.insert(0, str(REPO_ROOT))
+from config import NVIDIA_SCREENSHOT_DIR as NVIDIA_DIR
 
 os.chdir(str(REPO_ROOT))
 

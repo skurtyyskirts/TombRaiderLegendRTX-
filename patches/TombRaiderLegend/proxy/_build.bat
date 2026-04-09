@@ -1,6 +1,6 @@
 @echo on
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat" x86
-cd /d C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\patches\TombRaiderLegend\proxy
+cd /d "%~dp0"
 echo Compiling d3d9_main.c...
 cl.exe /nologo /O1 /GS- /W3 /Zl /c /D "WIN32" /D "NDEBUG" d3d9_main.c
 if errorlevel 1 echo MAIN_FAIL

@@ -4,9 +4,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-GAME_DIR = REPO_ROOT / "Tomb Raider Legend"
-DEBUG_RUNTIME = Path(r"C:\Users\skurtyy\Downloads\remixdebug")
+from config import GAME_DIR, REMIX_DEBUG_RUNTIME as DEBUG_RUNTIME
 RUNTIME_MARKER = GAME_DIR / ".runtime_type"
 
 # Files that live in the game root (not .trex) and differ between runtimes

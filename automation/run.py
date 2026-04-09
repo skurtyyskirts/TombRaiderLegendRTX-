@@ -29,11 +29,10 @@ MACRO_NAME = "test_session"
 GAME_EXE = GAME_DIR / "trl.exe"
 LAUNCHER = GAME_DIR / "NvRemixLauncher32.exe"
 PROXY_LOG = GAME_DIR / "ffp_proxy.log"
-SCREENSHOTS_SRC = Path(r"C:\Users\skurtyy\Videos\NVIDIA\Tomb Raider  Legend")
-SCREENSHOTS_DIR = SCRIPT_DIR / "screenshots"
-
-# Add repo root to path so livetools is importable
+# Add repo root to path so livetools and config are importable
 sys.path.insert(0, str(REPO_ROOT))
+from config import NVIDIA_SCREENSHOT_DIR as SCREENSHOTS_SRC
+SCREENSHOTS_DIR = SCRIPT_DIR / "screenshots"
 
 
 def collect_screenshots(max_age_seconds=120):

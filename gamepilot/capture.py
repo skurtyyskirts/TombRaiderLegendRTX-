@@ -21,7 +21,7 @@ SRCCOPY = 0x00CC0020
 DIB_RGB_COLORS = 0
 BI_RGB = 0
 
-NVIDIA_SCREENSHOT_DIR = Path(r"C:\Users\skurtyy\Videos\NVIDIA\Tomb Raider  Legend")
+from config import NVIDIA_SCREENSHOT_DIR
 
 
 class BITMAPINFOHEADER(ctypes.Structure):

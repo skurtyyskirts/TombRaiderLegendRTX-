@@ -2,12 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 jobs:
-  test:
+  # Python tools (retools, livetools, automation scripts)
+  test-python:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -22,3 +23,37 @@ jobs:
         run: pip install -r requirements.txt pytest
       - name: Run tests
         run: pytest tests/ -v --tb=short
+
+  # Proxy DLL build verification (MSVC x86, no CRT)
+  build-proxy:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build proxy DLL
+        working-directory: proxy
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x86
+          cl.exe /nologo /O2 /Oi /fp:fast /GL /GS- /W3 /Zl /c /D "WIN32" /D "NDEBUG" d3d9_main.c
+          cl.exe /nologo /O2 /Oi /fp:fast /GL /GS- /W3 /Zl /c /D "WIN32" /D "NDEBUG" d3d9_wrapper.c
+          cl.exe /nologo /O2 /Oi /fp:fast /GL /GS- /W3 /Zl /c /D "WIN32" /D "NDEBUG" d3d9_device.c
+          link.exe /nologo /DLL /NODEFAULTLIB /LTCG /ENTRY:_DllMainCRTStartup@12 /DEF:d3d9.def /OUT:d3d9.dll d3d9_main.obj d3d9_wrapper.obj d3d9_device.obj kernel32.lib
+      - name: Verify DLL exists
+        working-directory: proxy
+        run: |
+          if (!(Test-Path d3d9.dll)) { throw "d3d9.dll not found" }
+          Write-Host "d3d9.dll built successfully: $((Get-Item d3d9.dll).Length) bytes"
+      - name: Build game-specific proxy DLL
+        working-directory: patches/TombRaiderLegend/proxy
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x86
+          cl.exe /nologo /O2 /Oi /fp:fast /GL /GS- /W3 /Zl /c /D "WIN32" /D "NDEBUG" d3d9_main.c
+          cl.exe /nologo /O2 /Oi /fp:fast /GL /GS- /W3 /Zl /c /D "WIN32" /D "NDEBUG" d3d9_wrapper.c
+          cl.exe /nologo /O2 /Oi /fp:fast /GL /GS- /W3 /Zl /c /D "WIN32" /D "NDEBUG" d3d9_device.c
+          link.exe /nologo /DLL /NODEFAULTLIB /LTCG /ENTRY:_DllMainCRTStartup@12 /DEF:d3d9.def /OUT:d3d9.dll d3d9_main.obj d3d9_wrapper.obj d3d9_device.obj kernel32.lib
+      - name: Verify game-specific DLL
+        working-directory: patches/TombRaiderLegend/proxy
+        run: |
+          if (!(Test-Path d3d9.dll)) { throw "d3d9.dll not found" }
+          Write-Host "TRL proxy d3d9.dll built: $((Get-Item d3d9.dll).Length) bytes"

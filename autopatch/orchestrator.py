@@ -9,11 +9,11 @@ import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-GAME_DIR = REPO_ROOT / "Tomb Raider Legend"
-MACROS_FILE = Path(__file__).resolve().parent / "macros.json"
-SCREENSHOTS_SRC = Path(r"C:\Users\skurtyy\Videos\NVIDIA\Tomb Raider  Legend")
-
 sys.path.insert(0, str(REPO_ROOT))
+
+from config import GAME_DIR, NVIDIA_SCREENSHOT_DIR as SCREENSHOTS_SRC
+
+MACROS_FILE = Path(__file__).resolve().parent / "macros.json"
 
 MAX_ITERATIONS = 10
 

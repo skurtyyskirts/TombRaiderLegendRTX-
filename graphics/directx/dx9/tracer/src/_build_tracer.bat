@@ -1,7 +1,7 @@
 @echo off
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat" x86 >nul 2>nul
 
-cd /d "C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\graphics\directx\dx9\tracer\src"
+cd /d "%~dp0"
 
 cl.exe /nologo /O2 /W3 /c /D "WIN32" /D "NDEBUG" d3d9_trace_main.c
 if errorlevel 1 exit /b 1

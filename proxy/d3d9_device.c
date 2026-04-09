@@ -2393,11 +2393,57 @@ static int __stdcall WD_SetFVF(WrappedDevice *self, unsigned int fvf) {
  * Apply game memory patches for culling and frustum visibility.
  * These are write-once patches to the running process memory.
  */
+/* Verify we're running against the expected TRL executable (Steam PC, v1.0).
+ * Checks a known code signature at 0x401000 to prevent memory patches from
+ * writing to wrong addresses on different game versions (GOG, console ports,
+ * updated executables). Returns 1 if matched, 0 otherwise. */
+static int TRL_VerifyGameVersion(void) {
+    /* First 4 bytes at .text entry (0x401000) — unique to Steam v1.0 build */
+    static const unsigned char expected[] = { 0xA0, 0xB4, 0x9D, 0x15 };
+    DWORD oldProtect;
+    unsigned char *p = (unsigned char *)0x00401000;
+    int i;
+
+    if (!VirtualProtect(p, 4, PAGE_EXECUTE_READ, &oldProtect))
+        return 0;
+
+    for (i = 0; i < 4; i++) {
+        if (p[i] != expected[i]) {
+            log_str("WARNING: Game version mismatch at 0x401000 — patches disabled\r\n");
+            log_hex("  Expected: ", *(unsigned int*)expected);
+            log_hex("  Found:    ", *(unsigned int*)p);
+            return 0;
+        }
+    }
+
+    /* Secondary check: PE image size from optional header.
+     * Steam v1.0 trl.exe has SizeOfImage = 0x1175000 (18,305,024 bytes). */
+    {
+        unsigned char *base = (unsigned char *)0x00400000;
+        unsigned int peOff = *(unsigned int *)(base + 0x3C);
+        unsigned int sizeOfImage = *(unsigned int *)(base + peOff + 0x50);
+        if (sizeOfImage != 0x01175000) {
+            log_str("WARNING: PE SizeOfImage mismatch — patches disabled\r\n");
+            log_hex("  Expected: ", 0x01175000);
+            log_hex("  Got:      ", sizeOfImage);
+            return 0;
+        }
+    }
+
+    log_str("Game version verified: TRL Steam v1.0\r\n");
+    return 1;
+}
+
 static void TRL_ApplyMemoryPatches(WrappedDevice *self) {
     DWORD oldProtect;
 
     if (self->memoryPatchesApplied) return;
     self->memoryPatchesApplied = 1;
+
+    if (!TRL_VerifyGameVersion()) {
+        log_str("SKIPPING all memory patches — version check failed\r\n");
+        return;
+    }
 
     /* Frustum threshold: set to -1e30 so distance-based culling never triggers.
      * The game skips objects when distance <= threshold. Negative infinity catches
