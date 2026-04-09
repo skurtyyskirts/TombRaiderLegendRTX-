@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import subprocess
 import tempfile
+import time
 import os
 from enum import Enum
 from pathlib import Path
@@ -36,8 +37,14 @@ class GameState(str, Enum):
     UNKNOWN = "unknown"
 
 
+MAX_RETRIES = 2
+RETRY_DELAY = 1.0  # seconds between retries
+
+
 def _call_claude(prompt: str, image_path: str | None = None, timeout: int = 30) -> str:
     """Call Claude CLI and return the text response.
+
+    Retries on transient failures (timeout, non-zero exit) up to MAX_RETRIES times.
 
     Args:
         prompt: The prompt text to send.
@@ -46,35 +53,52 @@ def _call_claude(prompt: str, image_path: str | None = None, timeout: int = 30) 
 
     Returns:
         Claude's text response.
+
+    Raises:
+        RuntimeError: If all retries exhausted.
     """
     if image_path:
         full_prompt = f"First, read the image at {image_path} and view it. Then:\n\n{prompt}"
     else:
         full_prompt = prompt
 
-    result = subprocess.run(
-        CLAUDE_BASE_CMD,
-        input=full_prompt,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        cwd=str(REPO_ROOT),
-    )
+    last_error = None
+    for attempt in range(1 + MAX_RETRIES):
+        try:
+            result = subprocess.run(
+                CLAUDE_BASE_CMD,
+                input=full_prompt,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=str(REPO_ROOT),
+            )
 
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        raise RuntimeError(f"Claude CLI failed (rc={result.returncode}): {stderr}")
+            if result.returncode != 0:
+                stderr = result.stderr.strip()
+                last_error = RuntimeError(f"Claude CLI failed (rc={result.returncode}): {stderr[:200]}")
+                if attempt < MAX_RETRIES:
+                    time.sleep(RETRY_DELAY * (attempt + 1))
+                    continue
+                raise last_error
 
-    # Parse JSON output format
-    stdout = result.stdout.strip()
-    if not stdout:
-        return ""
+            stdout = result.stdout.strip()
+            if not stdout:
+                return ""
 
-    try:
-        data = json.loads(stdout)
-        return data.get("result", "")
-    except json.JSONDecodeError:
-        return stdout
+            try:
+                data = json.loads(stdout)
+                return data.get("result", "")
+            except json.JSONDecodeError:
+                return stdout
+
+        except subprocess.TimeoutExpired:
+            last_error = RuntimeError(f"Claude CLI timed out ({timeout}s) on attempt {attempt + 1}")
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY)
+                continue
+
+    raise last_error or RuntimeError("Claude CLI failed after retries")
 
 
 def _save_temp_image(image_bytes: bytes) -> str:

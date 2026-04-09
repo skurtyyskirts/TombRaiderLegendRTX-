@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -22,10 +21,15 @@ Examples:
   python -m gamepilot "navigate to gameplay" --no-launch
   python -m gamepilot "check if stage lights are visible" --nvidia
 
-Special commands (no goal needed):
-  python -m gamepilot --swap-debug     Switch to debug Remix runtime
-  python -m gamepilot --swap-regular   Switch to regular Remix runtime
-  python -m gamepilot --runtime-info   Show active runtime info
+Utility commands (no goal needed):
+  python -m gamepilot --health            Run preflight health checks
+  python -m gamepilot --swap-debug        Switch to debug Remix runtime
+  python -m gamepilot --swap-regular      Switch to regular Remix runtime
+  python -m gamepilot --runtime-info      Show active runtime info
+
+Stability options:
+  python -m gamepilot "goal" --dry-run    Test pipeline without game
+  python -m gamepilot "goal" --session-dir ./my_session
 """,
     )
     parser.add_argument(
@@ -49,6 +53,18 @@ Special commands (no goal needed):
         help="Suppress step-by-step output",
     )
     parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Test the agent pipeline without launching the game or calling Claude",
+    )
+    parser.add_argument(
+        "--session-dir", type=str, default=None,
+        help="Directory for session artifacts (auto-generated if not set)",
+    )
+    parser.add_argument(
+        "--health", action="store_true",
+        help="Run preflight health checks and exit",
+    )
+    parser.add_argument(
         "--swap-debug", action="store_true",
         help="Switch to debug Remix runtime",
     )
@@ -62,6 +78,12 @@ Special commands (no goal needed):
     )
 
     args = parser.parse_args()
+
+    # Health check command
+    if args.health:
+        from gamepilot.health import run_all_checks
+        _, all_passed = run_all_checks(verbose=True)
+        sys.exit(0 if all_passed else 1)
 
     # Runtime management commands
     if args.swap_debug:
@@ -82,24 +104,39 @@ Special commands (no goal needed):
         print(f"Debug source:    {DEBUG_RUNTIME}")
         sys.exit(0)
 
-    if not args.goal:
+    if not args.goal and not args.dry_run:
         parser.print_help()
-        print("\nError: a goal is required (or use --swap-debug/--swap-regular/--runtime-info)")
+        print("\nError: a goal is required (or use --dry-run, --health, --swap-debug, etc.)")
         sys.exit(1)
+
+    goal = args.goal or "dry-run test"
+
+    # Run preflight checks before starting (non-blocking warnings only)
+    if not args.dry_run:
+        from gamepilot.health import run_all_checks
+        _, all_passed = run_all_checks(verbose=True)
+        if not all_passed:
+            print("Fix the above errors before running the agent.")
+            print("Use --dry-run to test the pipeline without the game.")
+            sys.exit(1)
 
     from gamepilot.agent import run_agent
     result = run_agent(
-        goal=args.goal,
+        goal=goal,
         launch=not args.no_launch,
         max_steps=args.max_steps,
         prefer_nvidia=args.nvidia,
         verbose=not args.quiet,
+        session_dir=args.session_dir,
+        dry_run=args.dry_run,
     )
 
     print(f"\n{'=' * 60}")
     print(f"  Result: {'SUCCESS' if result['success'] else 'FAILED'}")
     print(f"  Steps: {result['steps_taken']}")
     print(f"  Final state: {result.get('final_state', 'unknown')}")
+    if result.get("session_dir"):
+        print(f"  Session: {result['session_dir']}")
     if not result["success"]:
         print(f"  Error: {result.get('error', 'unknown')}")
     print(f"{'=' * 60}")

@@ -106,6 +106,9 @@ patches/*/*.dat
 # Python nested caches
 **/__pycache__/
 
+# GamePilot session artifacts (regenerated per run)
+gamepilot/sessions/
+
 # Chat logs (personal, not project docs)
 chatgpt1.md
 geminibuild1.txt

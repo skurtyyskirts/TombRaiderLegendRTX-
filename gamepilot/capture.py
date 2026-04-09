@@ -3,48 +3,76 @@
 GDI capture is fast (~50ms) and works for menus/windowed mode.
 NVIDIA capture (pressing ']') is slower (~1-2s) but guaranteed to
 capture RTX Remix rendered frames in fullscreen exclusive mode.
+
+Platform: Windows only. Importing on other platforms raises a clear error
+at function call time, not at import time, so the rest of the package
+stays importable for testing and development.
 """
 from __future__ import annotations
 
-import ctypes
-import ctypes.wintypes as wt
 import io
+import sys
 import time
 from pathlib import Path
 
 from PIL import Image
 
-user32 = ctypes.windll.user32
-gdi32 = ctypes.windll.gdi32
+_IS_WINDOWS = sys.platform == "win32"
+
+if _IS_WINDOWS:
+    import ctypes
+    import ctypes.wintypes as wt
+    user32 = ctypes.windll.user32
+    gdi32 = ctypes.windll.gdi32
+else:
+    ctypes = None  # type: ignore[assignment]
+    wt = None  # type: ignore[assignment]
+    user32 = None
+    gdi32 = None
 
 SRCCOPY = 0x00CC0020
 DIB_RGB_COLORS = 0
 BI_RGB = 0
 
-from config import NVIDIA_SCREENSHOT_DIR
+# Defer config import so the module stays importable without config.py
+NVIDIA_SCREENSHOT_DIR: Path | None = None
+
+def _get_nvidia_dir() -> Path:
+    global NVIDIA_SCREENSHOT_DIR
+    if NVIDIA_SCREENSHOT_DIR is None:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from config import NVIDIA_SCREENSHOT_DIR as _d
+        NVIDIA_SCREENSHOT_DIR = _d
+    return NVIDIA_SCREENSHOT_DIR
 
 
-class BITMAPINFOHEADER(ctypes.Structure):
-    _fields_ = [
-        ("biSize", wt.DWORD),
-        ("biWidth", wt.LONG),
-        ("biHeight", wt.LONG),
-        ("biPlanes", wt.WORD),
-        ("biBitCount", wt.WORD),
-        ("biCompression", wt.DWORD),
-        ("biSizeImage", wt.DWORD),
-        ("biXPelsPerMeter", wt.LONG),
-        ("biYPelsPerMeter", wt.LONG),
-        ("biClrUsed", wt.DWORD),
-        ("biClrImportant", wt.DWORD),
-    ]
+def _require_windows(fn_name: str) -> None:
+    if not _IS_WINDOWS:
+        raise RuntimeError(f"{fn_name}() requires Windows (current platform: {sys.platform})")
 
 
-class BITMAPINFO(ctypes.Structure):
-    _fields_ = [
-        ("bmiHeader", BITMAPINFOHEADER),
-        ("bmiColors", wt.DWORD * 3),
-    ]
+if _IS_WINDOWS:
+    class BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [
+            ("biSize", wt.DWORD),
+            ("biWidth", wt.LONG),
+            ("biHeight", wt.LONG),
+            ("biPlanes", wt.WORD),
+            ("biBitCount", wt.WORD),
+            ("biCompression", wt.DWORD),
+            ("biSizeImage", wt.DWORD),
+            ("biXPelsPerMeter", wt.LONG),
+            ("biYPelsPerMeter", wt.LONG),
+            ("biClrUsed", wt.DWORD),
+            ("biClrImportant", wt.DWORD),
+        ]
+
+
+    class BITMAPINFO(ctypes.Structure):
+        _fields_ = [
+            ("bmiHeader", BITMAPINFOHEADER),
+            ("bmiColors", wt.DWORD * 3),
+        ]
 
 
 def capture_window_gdi(hwnd: int) -> Image.Image | None:
@@ -53,6 +81,7 @@ def capture_window_gdi(hwnd: int) -> Image.Image | None:
     Returns a PIL Image, or None if the capture produced an all-black frame
     (common with fullscreen exclusive D3D9).
     """
+    _require_windows("capture_window_gdi")
     rect = wt.RECT()
     user32.GetClientRect(hwnd, ctypes.byref(rect))
     w = rect.right - rect.left
@@ -103,8 +132,10 @@ def capture_nvidia(hwnd: int) -> Image.Image | None:
     Presses ']', waits for the screenshot file to appear in the NVIDIA
     capture directory, reads it, and returns as a PIL Image.
     """
+    _require_windows("capture_nvidia")
     from livetools.gamectl import send_key, focus_hwnd
 
+    nvidia_dir = _get_nvidia_dir()
     focus_hwnd(hwnd)
     before_ts = time.time()
     send_key("]", hold_ms=50)
@@ -112,10 +143,10 @@ def capture_nvidia(hwnd: int) -> Image.Image | None:
     # Wait for new screenshot file (up to 5s)
     for _ in range(50):
         time.sleep(0.1)
-        if not NVIDIA_SCREENSHOT_DIR.exists():
+        if not nvidia_dir.exists():
             continue
         candidates = [
-            f for f in NVIDIA_SCREENSHOT_DIR.iterdir()
+            f for f in nvidia_dir.iterdir()
             if f.suffix.lower() in (".png", ".jpg", ".bmp")
             and f.stat().st_mtime > before_ts
         ]
