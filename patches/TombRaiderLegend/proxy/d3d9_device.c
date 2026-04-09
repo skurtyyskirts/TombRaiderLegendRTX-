@@ -9,14 +9,22 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-/* No-CRT memcpy: the compiler emits memcpy calls for struct/array copies */
+/* No-CRT memcpy: #pragma function allows defining the fallback that the linker
+ * uses for variable-size copies. #pragma intrinsic immediately after restores
+ * the compiler intrinsic (rep movsd / SSE) for all known-size copies in the
+ * rest of the file — best of both worlds. */
 #pragma function(memcpy)
 void * __cdecl memcpy(void *dst, const void *src, unsigned int n) {
-    unsigned char *d = (unsigned char *)dst;
-    const unsigned char *s = (const unsigned char *)src;
-    while (n--) *d++ = *s++;
+    unsigned int *d32 = (unsigned int *)dst;
+    const unsigned int *s32 = (const unsigned int *)src;
+    unsigned int dwords = n >> 2;
+    unsigned int rem = n & 3;
+    while (dwords--) *d32++ = *s32++;
+    { unsigned char *d8 = (unsigned char*)d32; const unsigned char *s8 = (const unsigned char*)s32;
+      while (rem--) *d8++ = *s8++; }
     return dst;
 }
+#pragma intrinsic(memcpy)
 
 /* Logging (from d3d9_main.c) */
 extern void log_str(const char *s);
@@ -2098,10 +2106,12 @@ static int __stdcall WD_Present(WrappedDevice *self, void *a, void *b, void *c, 
     self->drawsPassthrough = 0;
     self->drawsTotal = 0;
     self->transformsBlocked = 0;
-    {
+#if DIAG_ENABLED
+    if (DIAG_ACTIVE(self)) {
         int r;
         for (r = 0; r < 256; r++) self->vsConstWriteLog[r] = 0;
     }
+#endif
 
     /* Reset per-frame submission tracking for pinned draws */
     PinnedDraw_FrameReset(self);
@@ -2123,82 +2133,27 @@ static int __stdcall WD_BeginScene(WrappedDevice *self) {
     self->ffpActive = 0;
     self->sceneCount++;
 
-    /* Re-stamp frustum threshold every scene — the game recomputes it from
-     * camera parameters each frame, overwriting the one-shot patch. */
-    {
-        DWORD oldProtect;
-        if (VirtualProtect((void*)TRL_FRUSTUM_THRESHOLD_ADDR, 4, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            *(float*)TRL_FRUSTUM_THRESHOLD_ADDR = -1e30f;
-            VirtualProtect((void*)TRL_FRUSTUM_THRESHOLD_ADDR, 4, oldProtect, &oldProtect);
-        }
+    /* Defer memory patches until a level is loaded — viewProjValid is set
+     * when the game writes VS constants (c0-c3 or c12-c15), which only
+     * happens during gameplay. The main menu never sets these registers,
+     * so patches that NOP scene graph traversal won't crash it. */
+    if (self->viewProjValid && !self->memoryPatchesApplied) {
+        TRL_ApplyMemoryPatches(self);
     }
 
-    /* Re-stamp far clip distance every scene — the game sets this per-level
-     * and our NOP at 0x407B06 handles the check in SceneTraversal, but other
-     * functions may also read this global. Force it to max. */
-    {
-        DWORD oldProtect;
-        if (VirtualProtect((void*)0x010FC910, 4, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            *(float*)0x010FC910 = 1e30f;
-            VirtualProtect((void*)0x010FC910, 4, oldProtect, &oldProtect);
-        }
-    }
-
-    /* Re-stamp cull globals every scene — the renderer reads these cached values
-     * and only calls SetRenderState on transitions, skipping our proxy hook. */
-    {
-        DWORD oldProtect;
-        if (VirtualProtect((void*)TRL_CULL_MODE_PASS1_ADDR, 12, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            *(unsigned int*)TRL_CULL_MODE_PASS1_ADDR    = 1; /* D3DCULL_NONE */
-            *(unsigned int*)TRL_CULL_MODE_PASS2_ADDR    = 1;
-            *(unsigned int*)TRL_CULL_MODE_PASS2_INV_ADDR = 1;
-            VirtualProtect((void*)TRL_CULL_MODE_PASS1_ADDR, 12, oldProtect, &oldProtect);
-        }
-    }
-
-    /* Stamp engine light culling disable flag every scene. This flag may
-     * control an internal engine path that rejects lights before they reach
-     * the render pipeline. Setting it to 1 bypasses that check. */
-    {
-        DWORD oldProtect;
-        if (VirtualProtect((void*)TRL_LIGHT_CULLING_DISABLE_FLAG, 4, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            *(unsigned int*)TRL_LIGHT_CULLING_DISABLE_FLAG = 1;
-            VirtualProtect((void*)TRL_LIGHT_CULLING_DISABLE_FLAG, 4, oldProtect, &oldProtect);
-        }
-    }
-
-    /* Clear render flags bit 20 — this bit skips the entire post-sector object
-     * rendering loop (0x40E2C0). The game may set it during cutscenes or
-     * transitions. Clearing ensures all three render paths always run. */
-    {
-        DWORD oldProtect;
-        if (VirtualProtect((void*)TRL_RENDER_FLAGS_ADDR, 4, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            *(unsigned int*)TRL_RENDER_FLAGS_ADDR &= ~0x00100000u; /* clear bit 20 */
-            VirtualProtect((void*)TRL_RENDER_FLAGS_ADDR, 4, oldProtect, &oldProtect);
-        }
-    }
-
-    /* Re-stamp post-sector loop enable and gate every scene — the engine
-     * may clear the enable byte or set the gate during transitions. */
-    {
-        DWORD oldProtect;
-        if (VirtualProtect((void*)TRL_POSTSECTOR_ENABLE_ADDR, 1, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            *(unsigned char*)TRL_POSTSECTOR_ENABLE_ADDR = 1;
-            VirtualProtect((void*)TRL_POSTSECTOR_ENABLE_ADDR, 1, oldProtect, &oldProtect);
-        }
-        if (VirtualProtect((void*)TRL_POSTSECTOR_GATE_ADDR, 4, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            *(unsigned int*)TRL_POSTSECTOR_GATE_ADDR = 0;
-            VirtualProtect((void*)TRL_POSTSECTOR_GATE_ADDR, 4, oldProtect, &oldProtect);
-        }
-    }
-
-    /* Re-stamp post-sector bitmask to all-1s so all sectors are processed. */
-    {
-        DWORD oldProtect;
-        if (VirtualProtect((void*)TRL_POSTSECTOR_SECTOR_BITS_ADDR, 4, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            *(unsigned int*)TRL_POSTSECTOR_SECTOR_BITS_ADDR = 0xFFFFFFFF;
-            VirtualProtect((void*)TRL_POSTSECTOR_SECTOR_BITS_ADDR, 4, oldProtect, &oldProtect);
-        }
+    /* Re-stamp game globals every scene, but only after patches are applied
+     * (data pages are permanently unlocked by TRL_ApplyMemoryPatches). */
+    if (self->memoryPatchesApplied) {
+        *(float*)TRL_FRUSTUM_THRESHOLD_ADDR = -1e30f;
+        *(float*)0x010FC910 = 1e30f;                          /* far clip */
+        *(unsigned int*)TRL_CULL_MODE_PASS1_ADDR     = 1;     /* D3DCULL_NONE */
+        *(unsigned int*)TRL_CULL_MODE_PASS2_ADDR     = 1;
+        *(unsigned int*)TRL_CULL_MODE_PASS2_INV_ADDR = 1;
+        *(unsigned int*)TRL_LIGHT_CULLING_DISABLE_FLAG = 1;
+        *(unsigned int*)TRL_RENDER_FLAGS_ADDR &= ~0x00100000u; /* clear bit 20 */
+        *(unsigned char*)TRL_POSTSECTOR_ENABLE_ADDR = 1;
+        *(unsigned int*)TRL_POSTSECTOR_GATE_ADDR = 0;
+        *(unsigned int*)TRL_POSTSECTOR_SECTOR_BITS_ADDR = 0xFFFFFFFF;
     }
 
     return ((FN)RealVtbl(self)[SLOT_BeginScene])(self->pReal);
@@ -2750,10 +2705,14 @@ static int __stdcall WD_SetVertexShaderConstantF(WrappedDevice *self,
             (startReg <= VS_REG_VP_START && startReg + count >= VS_REG_VP_END))
             self->viewProjValid = 1;
 
-        for (i = 0; i < count; i++) {
-            if (startReg + i < 256)
-                self->vsConstWriteLog[startReg + i] = 1;
+#if DIAG_ENABLED
+        if (DIAG_ACTIVE(self)) {
+            for (i = 0; i < count; i++) {
+                if (startReg + i < 256)
+                    self->vsConstWriteLog[startReg + i] = 1;
+            }
         }
+#endif
 
 #if ENABLE_SKINNING
         /* Immediate bone upload: transpose 4x3→4x4 and SetTransform now.
@@ -3730,6 +3689,31 @@ static void TRL_ApplyMemoryPatches(WrappedDevice *self) {
         }
     }
 
+    /* Permanently unlock data pages that BeginScene stamps every frame.
+     * This eliminates ~28 VirtualProtect kernel calls per frame (7 pairs x 2 scenes).
+     * These are .data section addresses — safe to leave writable permanently. */
+    {
+        static const unsigned int dataAddrs[] = {
+            TRL_FRUSTUM_THRESHOLD_ADDR,         /* 0x00EFDD64 */
+            0x010FC910,                          /* far clip distance */
+            TRL_CULL_MODE_PASS1_ADDR,            /* 0x00F2A0D4 (covers D8, DC on same page) */
+            TRL_LIGHT_CULLING_DISABLE_FLAG,      /* 0x01075BE0 */
+            TRL_RENDER_FLAGS_ADDR,               /* 0x010E5384 */
+            TRL_POSTSECTOR_ENABLE_ADDR,          /* 0x00F12016 */
+            TRL_POSTSECTOR_GATE_ADDR,            /* 0x010024E8 */
+            TRL_POSTSECTOR_SECTOR_BITS_ADDR,     /* 0x00FFA718 */
+        };
+        int di;
+        int unlocked = 0;
+        for (di = 0; di < 8; di++) {
+            if (VirtualProtect((void*)dataAddrs[di], 16, PAGE_READWRITE, &oldProtect))
+                unlocked++;
+        }
+        log_str("  Permanently unlocked data pages for per-scene stamps: ");
+        log_int("", unlocked);
+        log_str("/8\r\n");
+    }
+
 }
 
 /* ---- Build vtable ---- */
@@ -3926,8 +3910,9 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     log_hex("  View matrix addr: ", TRL_VIEW_MATRIX_ADDR);
     log_hex("  Proj matrix addr: ", TRL_PROJ_MATRIX_ADDR);
 
-    /* Apply one-time game memory patches for culling/frustum */
-    TRL_ApplyMemoryPatches(w);
+    /* Memory patches deferred to first BeginScene with viewProjValid —
+     * applying at device creation crashes the main menu, which uses the
+     * same code paths but with NULL scene graph pointers. */
 
     return w;
 }
