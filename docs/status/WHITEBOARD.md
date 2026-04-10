@@ -1,6 +1,6 @@
 # TRL RTX Remix — Live Whiteboard
 
-**Updated:** 2026-04-09 · **Builds:** 001–075 (003–015, 034, 043, 048–063 not preserved)  
+**Updated:** 2026-04-10 · **Builds:** 001–075 (003–015, 034, 043, 048–063 not preserved)  
 **Goal:** Stable hashes, full geometry submission, Remix lights anchored to stage geometry
 
 ---
@@ -11,7 +11,7 @@
 |------|--------|-------|
 | FFP proxy DLL builds & chains | DONE | MSVC x86, chains to Remix d3d9 |
 | Transform pipeline (View/Proj/World) | DONE | View/Proj from game memory, World via WVP decomposition |
-| Asset hash stability (static camera) | DONE | `indices,texcoords,geometrydescriptor` rule, session-reproducible |
+| Asset hash stability (static camera) | DONE | `positions,indices,texcoords,geometrydescriptor` rule, session-reproducible |
 | Asset hash stability (with movement) | DONE | Lara model rock-solid; world geometry stable once culling fixed |
 | Automated test pipeline | DONE | Two-phase (hash debug + clean render), randomized movement |
 | Input delivery to DirectInput game | DONE | Scancode flag fix (build 018) |
