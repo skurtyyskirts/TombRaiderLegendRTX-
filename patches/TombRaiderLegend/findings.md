@@ -3056,3 +3056,952 @@ Option A is recommended -- single 5-byte patch, clean, the uncull path is a know
 | 0x40ACB0 | RenderQueue_SubmitAux | Auxiliary submission path |
 | 0x5DDC70 | FrustumTest_Primary | Primary frustum plane test |
 | 0x4070C0 | FrustumTest_Secondary | Secondary frustum plane test |
+
+## Per-Object Visibility Flags Analysis — 2026-04-12
+
+### Summary
+
+The mesh submission pipeline has **5 distinct visibility gates** between a mesh entry and an actual draw call. The proxy currently patches only one (MeshSubmit_VisibilityGate at 0x454AB0 → `xor eax,eax; ret`). There are 4 additional gates that can independently prevent mesh draws, and the most significant one is **Sector_IterateMeshArray at 0x46C320** which tests bits 0x82000000 in the meshEntry flags field [obj+0x5C] BEFORE even calling MeshSubmit.
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x46C320 | **Sector_IterateMeshArray** — iterates mesh array, skips entries with `[esi+0x5C] & 0x82000000 != 0` |
+| 0x46C337 | `test dword ptr [esi+0x5c], 0x82000000; jne 0x46C34C` — **pre-MeshSubmit skip** |
+| 0x454AB0 | MeshSubmit_VisibilityGate — currently patched to `xor eax,eax; ret` |
+| 0x458630 | **MeshSubmit** — main mesh submission function (6 callers) |
+| 0x45867F | `test ch, 1` — checks ObjectTracker data flags bit 0x100 |
+| 0x458686 | `jne 0x45896C` — diverts to 0x461A90 (alternate LOD/instance path) when 0x100 set |
+| 0x45868C | `test [edi+0x5c], 0x200000; jne 0x45896C` — same diversion for bit 0x200000 |
+| 0x5BE7B0 | SectorVisibility_BitfieldCheck — sector visibility bitfield lookup |
+| 0x5BE540 | SectorCommandBuffer_Search — command buffer match by sector ID |
+| 0x455780 | Pre-MeshSubmit filter — checks `[obj+0xA4] & 0x20` flag (used by 2 callers) |
+| 0x455700 | ObjectTracker mesh search — finds mesh in tracker by sector ID |
+| 0x461A90 | Alternate submission path — used when bit 0x100 or 0x200000 is set in flags |
+
+### Details
+
+#### Gate 1: Sector_IterateMeshArray (0x46C320) — bits 0x82000000 in [obj+0x5C]
+
+```c
+void Sector_IterateMeshArray(int32_t meshArray, int32_t sceneCtx) {
+    void *meshEntry = *(meshArray + 8);
+    for (int i = *(meshArray + 4); i != 0; i--) {
+        if ((*(meshEntry + 0x5c) & 0x82000000) == 0) {  // <-- GATE
+            MeshSubmit(meshEntry, sceneCtx, 0);
+        }
+        meshEntry += 0x70;
+    }
+}
+```
+
+This is called from 0x44FB60 (ObjectTracker iteration) and 0x451FB8. The 0x82000000 mask tests:
+- Bit 0x80000000: Set by MeshSubmit_VisibilityGate when mesh passes visibility — marks "already submitted"
+- Bit 0x02000000: Purpose unknown — could be a "hidden" or "disabled" flag
+
+**This gate is NOT currently patched.** If bit 0x02000000 is set on furniture meshes, they will NEVER be submitted regardless of all other patches.
+
+#### Gate 2: MeshSubmit_VisibilityGate (0x454AB0) — PATCHED
+
+Currently patched to `xor eax,eax; ret` (always returns 0 = "not yet visible, allow submission"). The original function checked:
+1. Hidden mesh list at global `0x10C5AA4`
+2. SectorCommandBuffer_Search by sector ID
+3. SectorVisibility_BitfieldCheck — sector-level bitfield
+
+#### Gate 3: ObjectTracker_Resolve check (0x458666-0x458673)
+
+Inside MeshSubmit, after visibility gate passes:
+```c
+iVar4 = ObjectTracker_Resolve(*(meshEntry + 0x50), -1);
+if (iVar4 == 0) return 0;           // gate: object not in tracker
+if (*(iVar4 + 0xe) != 2) return 0;  // gate: object state != 2 (loaded)
+```
+
+ObjectTracker entries live at `slot * 0x24 + 0x11585D8`. State byte at +0xE must equal 2. This is the streaming system — objects not fully loaded are state != 2 and get rejected.
+
+#### Gate 4: ObjectTracker data flags (0x45867F) — bit 0x100 at [objData+4]
+
+```c
+puVar2 = *(resolvedObj + 8);  // data pointer
+if ((puVar2[1] & 0x100) != 0) {  // flags DWORD at [data+4], bit 0x100
+    goto alternate_path;  // 0x461A90 — LOD/instance alternate submission
+}
+```
+
+When bit 0x100 is set, the mesh takes an alternate submission path at 0x461A90 instead of the normal draw path. This is NOT a skip — it's a diversion to a different rendering function.
+
+#### Gate 5: meshEntry flags bit 0x200000 at [obj+0x5C]
+
+```c
+if ((*(meshEntry + 0x5c) & 0x200000) != 0) {
+    goto alternate_path;  // same 0x461A90
+}
+```
+
+Same diversion as Gate 4 — bit 0x200000 in the mesh flags causes the alternate path.
+
+#### Gate 6 (pre-filter): 0x455780 — flag 0x20 at [renderObj+0xA4]
+
+Two callers (0x41F016, 0x41F099) first call `0x455780(meshEntry)` which checks if the mesh matches a render object table at 0x10C5BC0, and if `[renderObj+0xA4] & 0x20` is set. If not found or flag not set, it falls through to `0x455700` which searches the ObjectTracker for the mesh. Only if one of these succeeds does MeshSubmit get called.
+
+### Mesh Entry Struct Layout (0x70 bytes per entry)
+
+```c
+struct MeshEntry {
+    /* +0x00 */ float transform[4];    // position/bounds row 0
+    /* +0x10 */ float transform2[4];   // position/bounds row 1
+    /* +0x40 */ float scale[4];        // scale vector (if 0x100000 flag)
+    /* +0x50 */ int16_t resourceKey;   // ObjectTracker resource key
+    /* +0x52 */ uint16_t field_52;     // copied to render cmd +0x92
+    /* +0x54 */ uint32_t sectorId;     // sector ID for visibility checks
+    /* +0x5C */ uint32_t flags;        // visibility/state flags (critical)
+    /* +0x64 */ uint32_t field_64;     // copied to render cmd +0x1C4
+};
+```
+
+#### Flags at +0x5C (known bits)
+| Bit | Meaning |
+|-----|---------|
+| 0x00200000 | Alternate submission path (LOD/instance) |
+| 0x00400000 | Sets render flag 0x08 at [cmd+0xAC] |
+| 0x00800000 | Sets render flag 0x20000 at [cmd+0xA8] |
+| 0x01000000 | Triggers material/sort function 0x465A60 |
+| 0x02000000 | **UNKNOWN — blocks Sector_IterateMeshArray** |
+| 0x04000000 | Triggers sort key path (if objData[4]==0xFFFFFFFF) |
+| 0x10000000 | Shadow/decal path |
+| 0x80000000 | "Already submitted" — set by VisibilityGate, blocks re-entry |
+| 0x00100000 | Uses mesh scale from +0x40 (else default 1.0) |
+
+### Suggested Live Verification
+
+1. **Check bit 0x02000000**: `livetools memwatch` on known furniture mesh entries to see if bit 0x02000000 is set. If it is, NOP the `test/jne` at 0x46C337-0x46C33E (6 bytes → `90 90 90 90 90 90 90 90` for the full test+jne).
+
+2. **Patch site for Gate 1**: At 0x46C337, replace `F7 46 5C 00 00 00 82 75 0C` (test + jne) with `90 90 90 90 90 90 90 90 90` (9 NOPs) to unconditionally submit all meshes in the array.
+
+3. **Check ObjectTracker state**: Read `0x11585D8 + slot*0x24 + 0xE` for target meshes to verify state == 2. If state != 2, the object is not loaded (streaming issue, not visibility).
+
+4. **Monitor 0x455780 filter**: Trace 0x455780 to see if it's rejecting furniture meshes via the `[obj+0xA4] & 0x20` check.
+
+## ProcessPendingRemovals Crash Analysis — 2026-04-12
+
+### Summary
+
+The ProcessPendingRemovals function at 0x436680 iterates **three linked lists** (List 1 at `0x107F6E4`, List 2 at `0x107F6DC`, List 3 at `0x107F6EC`). Each loop checks two conditions that dereference pointers which can be stale:
+
+1. `node[0x12]` (offset +0x48 = field_48): `test byte ptr [eax+0xA4], 0x20` where eax = node->field_48
+2. `node[0x2B]` (offset +0xAC = field_AC): `test byte ptr [reg+0xA4], 0x20` where reg = node->field_AC
+
+If either pointer is stale/freed, the dereference at `+0xA4` crashes.
+
+**The proxy currently patches only List 2 (0x436740) and List 3 (0x4367CD). List 1 at 0x4366B3 is NOT patched.** This is the remaining crash path.
+
+Additionally, the `field_AC` dereferences at 0x4366C8 (List 1), 0x436756 (List 2), and 0x4367E3 (List 3) are NOT null-checked by the engine — they only gate on `[esi+8] & 2` being set. If the `& 2` flag is set but field_AC is stale, these will also crash.
+
+### Function Structure
+
+```
+ProcessPendingRemovals (0x436680):
+    458 bytes, single return at 0x436849
+    3 callers: 0x457A0A, 0x461999, 0x5D4D24
+    3 callees: 0x45BD50 (unlink?), 0x45BD30 (ListLinker), 0x461540 (cleanup)
+```
+
+### All 6 Dangerous Dereference Sites
+
+| # | Address | List | Source Pointer | Instruction | Null Check? | Patched? |
+|---|---------|------|----------------|-------------|-------------|----------|
+| 1 | 0x4366B5 | 1 (0x107F6E4) | `[esi+0x48]` = field_48 | `test byte ptr [eax+0xA4], 0x20` | YES (JE at 0x4366B3 if eax==0) | **NO** |
+| 2 | 0x4366C8 | 1 (0x107F6E4) | `[esi+0xAC]` = field_AC | `test byte ptr [eax+0xA4], 0x20` | NO (only `[esi+8] & 2` gate) | **NO** |
+| 3 | 0x436742 | 2 (0x107F6DC) | `[esi+0x48]` = field_48 | `test byte ptr [eax+0xA4], 0x20` | YES (JE at 0x436740 if eax==0) | YES (JE->JMP) |
+| 4 | 0x436756 | 2 (0x107F6DC) | `[esi+0xAC]` = field_AC | `test byte ptr [ecx+0xA4], 0x20` | NO (only `[esi+8] & 2` gate) | Indirectly (JMP at 0x436740 skips entire check block) |
+| 5 | 0x4367CF | 3 (0x107F6EC) | `[esi+0x48]` = field_48 | `test byte ptr [eax+0xA4], 0x20` | YES (JE at 0x4367CD if eax==0) | YES (JE->JMP) |
+| 6 | 0x4367E3 | 3 (0x107F6EC) | `[esi+0xAC]` = field_AC | `test byte ptr [edx+0xA4], 0x20` | NO (only `[esi+8] & 2` gate) | Indirectly (JMP at 0x4367CD skips entire check block) |
+
+### Control Flow Per List (identical pattern in all 3)
+
+```
+Loop entry:
+  mov eax, [esi+0x48]    ; load field_48
+  cmp eax, ebp           ; null check (ebp=0)
+  je  SKIP_FIELD48       ; <-- THIS is what gets patched to JMP
+  test byte ptr [eax+0xA4], 0x20   ; CRASH if eax is stale non-null
+  jne REMOVAL_PATH
+SKIP_FIELD48:
+  test [esi+8], bl       ; check flags & 2
+  je  NEXT_NODE          ; skip if flag not set
+  mov reg, [esi+0xAC]    ; load field_AC (NO null check!)
+  test byte ptr [reg+0xA4], 0x20   ; CRASH if reg is stale
+  je  NEXT_NODE
+REMOVAL_PATH:
+  ... unlink and cleanup node ...
+NEXT_NODE:
+  ... advance to next node ...
+```
+
+### List 1 — The Unpatched Path
+
+List 1 has an additional guard: `test ecx, 0x200000` at 0x4366A3 (where ecx = `[esi+8]`). If bit 0x200000 is set, the node is skipped entirely (jumps to 0x436724). This means List 1 only crashes on nodes where:
+- Bit 0x200000 is NOT set, AND
+- field_48 is non-null but stale, OR
+- `[esi+8] & 2` is set AND field_AC is stale
+
+### Recommended Patches
+
+**Patch 1 (critical): Fix List 1 field_48 — JE at 0x4366B3 -> JMP**
+```
+Address: 0x4366B3
+Original: 74 09  (je 0x4366BE)
+Patch:    EB 09  (jmp 0x4366BE)
+```
+This skips the `test byte ptr [eax+0xA4], 0x20` at 0x4366B5, exactly matching what was done for Lists 2 and 3.
+
+**Patch 2 (defensive): Fix List 1 field_AC — JE at 0x4366C0 -> JMP**
+```
+Address: 0x4366C0
+Original: 74 62  (je 0x436724)
+Patch:    EB 62  (jmp 0x436724)
+```
+This skips the field_AC dereference at 0x4366C8. The Lists 2 and 3 patches at 0x436740/0x4367CD already protect their field_AC paths because the JMP skips past both checks. But List 1's field_48 JMP (Patch 1) only jumps to 0x4366BE, which falls through to the field_AC check.
+
+**Alternative: Single patch for List 1 that skips BOTH checks**
+
+Instead of patching 0x4366B3 to jump to 0x4366BE (which still hits the field_AC path), patch the null-check JE to jump directly to 0x436724 (NEXT_NODE):
+```
+Address: 0x4366B3
+Original: 74 09         (je +9 -> 0x4366BE)
+Patch:    EB 6F         (jmp +0x6F -> 0x436724)
+```
+Wait — 0x436724 - 0x4366B5 = 0x6F, so from 0x4366B3+2 = 0x4366B5 the offset is 0x6F. The JE is at 0x4366B3, so jmp rel8 = 0x436724 - 0x4366B5 = 0x6F. This is correct.
+
+BUT: this changes behavior — if field_48 is NULL, the node is no longer checked via field_AC either. For Lists 2 and 3, the existing patches (JE->JMP at the field_48 null-check) jump to the field_AC check block, so they still process nodes via the field_AC path. Let me re-examine...
+
+Actually, re-reading the List 2 patch: 0x436740 is `je 0x43674B`. Patching to `jmp 0x43674B` means: when field_48 is NULL, jump to 0x43674B which is `test [esi+8], bl` — the field_AC check. So List 2 and 3 patches DO still reach the field_AC dereference. They're protected only because field_AC tends to not be stale when field_48 is NULL.
+
+**The safest complete fix for all 3 lists** is to skip the entire field_48+field_AC check block and go directly to NEXT_NODE. This prevents cleanup of stale nodes but avoids all crashes:
+
+| List | Patch Address | Original | Patch | Target |
+|------|--------------|----------|-------|--------|
+| 1 | 0x4366AC | `75 76` (jne 0x436724) | `EB 76` (jmp 0x436724) | Skip both checks if 0x200000 not set |
+| 2 | 0x436740 | `74 09` (je 0x43674B) | `EB 66` (jmp 0x4367B1) | Skip to NEXT_NODE |
+| 3 | 0x4367CD | `74 09` (je 0x4367D8) | `EB 70` (jmp 0x43683F) | Skip to NEXT_NODE |
+
+However, the simplest immediate fix is **Patch 1** (0x4366B3: `74` -> `EB`), which matches the existing pattern and fixes the documented crash. The field_AC paths are lower risk because they require `[esi+8] & 2` to be set.
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x436680 | ProcessPendingRemovals — function entry |
+| 0x436849 | ProcessPendingRemovals — single return |
+| 0x107F6E4 | List 1 head pointer (global) |
+| 0x107F6DC | List 2 head pointer (global) |
+| 0x107F6EC | List 3 head pointer (global) |
+| 0x107F6F8 | Shared "current" pointer (global) |
+| 0x107F6C0 | Slot array base pointer (global) |
+| 0x107F6F0 | Free list pointer for ListLinker (global) |
+| 0x4366B3 | **UNPATCHED** — List 1 field_48 null-check JE |
+| 0x4366C0 | **UNPATCHED** — List 1 flags & 2 gate JE |
+| 0x436740 | PATCHED (JE->JMP) — List 2 field_48 null-check |
+| 0x4367CD | PATCHED (JE->JMP) — List 3 field_48 null-check |
+| 0x457A0A | Caller 1 of ProcessPendingRemovals |
+| 0x461999 | Caller 2 of ProcessPendingRemovals |
+| 0x5D4D24 | Caller 3 of ProcessPendingRemovals |
+
+### Decompiled ProcessPendingRemovals (annotated)
+
+```c
+void ProcessPendingRemovals(void) {
+    int *node, *prev, *next;
+    
+    // === LIST 1: head at 0x107F6E4 ===
+    // Extra guard: skips nodes with bit 0x200000 set in [node+8]
+    node = *(int**)0x107F6E4;
+    if (node != NULL) {
+        do {
+            next = node[1];  // [esi+4] = next pointer
+            int flags = node[2];  // [esi+8] = flags
+            if ((flags & 0x200000) == 0) {
+                int* field_48 = (int*)node[0x12];  // [esi+0x48]
+                if (field_48 != NULL) {
+                    if (*(uint8_t*)(field_48 + 0xA4) & 0x20)  // CRASH SITE #1 (0x4366B5)
+                        goto remove_node_L1;
+                }
+                if (flags & 2) {
+                    int* field_AC = (int*)node[0x2B];  // [esi+0xAC]
+                    if (*(uint8_t*)(field_AC + 0xA4) & 0x20)  // CRASH SITE #2 (0x4366C8)
+                        goto remove_node_L1;
+                }
+            }
+            goto next_L1;
+        remove_node_L1:
+            // ... unlink + cleanup ...
+        next_L1:
+            node = next;
+        } while (next != NULL);
+    }
+    
+    // === LIST 2: head at 0x107F6DC ===
+    // No 0x200000 guard
+    node = *(int**)0x107F6DC;
+    if (node != NULL) {
+        do {
+            next = node[1];
+            int* field_48 = (int*)node[0x12];
+            if (field_48 != NULL) {  // 0x436740: JE patched to JMP
+                if (*(uint8_t*)(field_48 + 0xA4) & 0x20)  // CRASH SITE #3 (0x436742)
+                    goto remove_node_L2;
+            }
+            if (node[2] & 2) {
+                int* field_AC = (int*)node[0x2B];
+                if (*(uint8_t*)(field_AC + 0xA4) & 0x20)  // CRASH SITE #4 (0x436756)
+                    goto remove_node_L2;
+            }
+            goto next_L2;
+        remove_node_L2:
+            // ... unlink + cleanup ...
+        next_L2:
+            node = next;
+        } while (next != NULL);
+    }
+    
+    // === LIST 3: head at 0x107F6EC ===
+    // No 0x200000 guard
+    node = *(int**)0x107F6EC;
+    if (node != NULL) {
+        do {
+            next = node[1];
+            int* field_48 = (int*)node[0x12];
+            if (field_48 != NULL) {  // 0x4367CD: JE patched to JMP
+                if (*(uint8_t*)(field_48 + 0xA4) & 0x20)  // CRASH SITE #5 (0x4367CF)
+                    goto remove_node_L3;
+            }
+            if (node[2] & 2) {
+                int* field_AC = (int*)node[0x2B];
+                if (*(uint8_t*)(field_AC + 0xA4) & 0x20)  // CRASH SITE #6 (0x4367E3)
+                    goto remove_node_L3;
+            }
+            goto next_L3;
+        remove_node_L3:
+            // ... unlink + cleanup ...
+        next_L3:
+            node = next;
+        } while (next != NULL);
+    }
+}
+```
+
+### Note on Crash Address 0xEE88AD
+
+The address 0xEE88AD in the on-disk binary maps to the CRT `_output` function (printf formatter), NOT ProcessPendingRemovals. The `test byte ptr [eax+0xA4], 0x20` instruction at that address does not exist at 0xEE88AD on disk — the actual instruction there is `cmp byte ptr [eax], 0` (a string length loop). The crash address 0xEE88AD likely comes from a different binary version or runtime code relocation. The actual dangerous instructions are at the 6 addresses listed above within the 0x436680 function.
+
+### Suggested Live Verification
+
+1. **Apply Patch 1**: `livetools mem write 0x4366B3 EB` to convert JE to JMP for List 1
+2. **Apply Patch 2** (defensive): `livetools mem write 0x4366C0 EB` to skip field_AC check for List 1
+3. **Verify existing patches hold**: `livetools mem read 0x436740 1` should show `EB`, `livetools mem read 0x4367CD 1` should show `EB`
+4. **Stress test**: Force all sectors visible and run for extended time to confirm no more crashes
+5. **If crashes persist at field_AC in Lists 2/3**: Apply wider patches at 0x436740 (`EB 66` to skip to 0x4367B1) and 0x4367CD (`EB 70` to skip to 0x43683F)
+
+## Crash at 0xEE88AD — Definitive Disassembly Analysis — 2026-04-12
+
+### Summary
+
+The crash at EIP=0x00EE88AD with EAX=0x00008EF1 (stale pointer, read of [eax]) is **inside the MSVC CRT `_output` function** (the printf/sprintf formatter), NOT inside ProcessPendingRemovals. The instruction at 0xEE88AD is `cmp byte ptr [eax], 0` — a single-byte string-length scan loop, not a struct field test. The stale pointer in EAX is a bad string pointer passed to a printf-family function, not a stale object pointer.
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0xEE8383 | `_output` function entry (CRT printf formatter, 2744 bytes, ends 0xEE8E3B) |
+| 0xEE88AC | `dec ecx` — decrement remaining char count |
+| 0xEE88AD | `cmp byte ptr [eax], 0` — **CRASH SITE** — check for null terminator |
+| 0xEE88B0 | `je 0xEE88B7` — branch if end of string |
+| 0xEE88B2 | `inc eax` — advance string pointer |
+| 0xEE88B3 | `test ecx, ecx` — check count exhausted |
+| 0xEE88B5 | `jne 0xEE88AC` — loop back |
+| 0xEE88B7 | `sub eax, [ebp-0x44]` — compute string length |
+
+### Details
+
+#### Crash-site disassembly (the strlen loop inside `_output`)
+
+```asm
+; This is the %s format handler — scans for null terminator
+0x00EE88AC: dec      ecx            ; remaining max count
+0x00EE88AD: cmp      byte ptr [eax], 0   ; <-- CRASH: EAX = 0x8EF1 (bad ptr)
+0x00EE88B0: je       0xee88b7       ; found null terminator
+0x00EE88B2: inc      eax            ; next char
+0x00EE88B3: test     ecx, ecx      ; count exhausted?
+0x00EE88B5: jne      0xee88ac       ; loop
+0x00EE88B7: sub      eax, [ebp-0x44] ; string length = current - start
+0x00EE88BA: jmp      0xee8a1d       ; jump to output section
+```
+
+This is the classic CRT `_output` strlen loop for `%s` format specifier processing. EAX holds the string pointer from a va_arg, ECX holds the max character count.
+
+#### Function identification
+
+- **Start**: 0xEE8383 (push ebp; lea ebp, [esp-0x1D4]; sub esp, 0x254)
+- **Size**: 2,744 bytes (0xEE8383 — 0xEE8E3B)
+- **Stack frame**: 0x254 bytes — characteristic of MSVC CRT `_output`
+- **Callees**: includes calls to `[0xEFD140]` and `[0xEFD144]` (indirect via CRT function pointers — `_putc_nolock` / `_flsbuf`)
+- **5 callers**: 0xEE5320, 0xEE5377, 0xEE653B, 0xEE674E, 0xEE706B — these are `fprintf`, `sprintf`, `_snprintf`, `vfprintf`, `_vsnprintf` wrappers
+- **sigdb**: No signature match (statically linked CRT, custom build)
+- **No xrefs to 0xEE88AD itself**: confirms it is mid-function, not a call target
+
+#### NOT ProcessPendingRemovals
+
+The `test byte ptr [eax+0xA4], 0x20` pattern (ProcessPendingRemovals field check) exists at 14 addresses in the binary, all in the 0x43xxxx and 0x56xxxx ranges:
+
+| Address | Context |
+|---------|---------|
+| 0x4366B5, 0x4366C8, 0x436742, 0x4367CF | ProcessPendingRemovals main function (0x436680) |
+| 0x456B54, 0x457A20 | Related object management |
+| 0x5400E7, 0x560E7E, 0x561197, 0x56155E | Scene/sector processing |
+| 0x573319, 0x585D0C, 0x585D4E, 0x5D4D32 | Other subsystems |
+
+**None of these are anywhere near 0xEE88AD.** The crash at 0xEE88AD is definitively in the CRT, not in game object management code.
+
+#### Root cause
+
+A printf-family function (one of the 5 callers listed above) received a stale or corrupt string pointer (0x00008EF1) as an argument. This value is too low to be a valid heap address — it looks like a truncated pointer or a small integer being misinterpreted as a string address. Possible sources:
+
+1. **A `%s` format arg pointing to a freed/relocated string buffer** — the most likely cause in a game with aggressive sector streaming
+2. **A struct field that holds a name/label string, where the owning object was freed** — e.g., debug logging that reads `obj->name` after the object was evicted
+3. **Format string mismatch** — a `%s` in the format string paired with an integer argument
+
+### Suggested Live Verification
+
+1. **Trace the callers**: `livetools trace 0xEE5320 --count 10 --read "[esp+4]:4:ptr"` (and similarly for 0xEE5377, 0xEE653B, 0xEE674E, 0xEE706B) to see which printf wrapper is called most frequently and what arguments it receives
+2. **Breakpoint at crash site**: `livetools bp add 0xEE88AD` then `regs` to inspect EAX and the stack to identify which caller passed the bad string pointer
+3. **Backtrace from crash**: The return address on the stack above the `_output` frame tells you exactly which game function passed the bad string — this is the real fix target
+4. **If crash is in game logging**: The simplest fix is to NOP the specific `call` instruction in the game function that passes a stale string to printf, rather than patching inside the CRT
+
+## Crash at 0x40C3C4 — NULL dereference in RenderQueue_DirectDispatch — 2026-04-12
+
+### Summary
+
+The crash is at `0x40C3C4` inside `RenderQueue_DirectDispatch` (0x40C390-0x40C425). The instruction `mov esi, [edi+0x14]` reads field +0x14 from a render queue node pointed to by EDI. When EDI is NULL (or the node's child pointer at +0x14 is garbage), this crashes. The root cause is that forcing all sectors visible via the sector visibility patches causes the render queue to contain nodes with NULL or uninitialized pointers — objects from sectors that were never meant to be traversed in the original engine flow.
+
+### Crash Instruction
+
+```asm
+0x40C3C4:  mov esi, [edi+0x14]    ; read child count from node
+0x40C3C7:  test esi, esi
+0x40C3C9:  jne 0x40C401           ; if children, recurse
+```
+
+At crash time: EDI = 0x00000000 (NULL node pointer), so `[edi+0x14]` = read from 0x00000014 = access violation.
+
+### Function: RenderQueue_DirectDispatch (0x40C390 - 0x40C425)
+
+This is the "NoCull" path — the function that processes render queue nodes WITHOUT frustum testing. It is called recursively when `RenderQueue_FrustumCull` determines a node is fully inside the frustum (all children visible, skip per-child testing). The proxy's Layer 30 patch redirects `RenderQueue_FrustumCull` (0x40C430) to jump directly to `RenderQueue_DirectDispatch` (0x40C390), bypassing all frustum math.
+
+Decompiled:
+```c
+void __cdecl RenderQueue_DirectDispatch(void *node, uint32_t shadowMask, uint32_t sectorMask)
+{
+    uint32_t sectorMask2 = 0;
+    if (sectorMask != 0)
+        sectorMask2 = func_0x40C250(sectorMask);
+    if (shadowMask != 0)
+        shadowMask = func_0x40B2D0(shadowMask);
+
+    int childCount = *(node + 0x14);       // <-- CRASH HERE if node is NULL
+    if (childCount == 0) {
+        // Leaf node: add to visibility and insert render command
+        if (sectorMask2 != 0)
+            PostSector_AddToVisibilityMask(*(node+0x10), sectorMask2, *0xF48A54, *0xF48A50);
+        RenderQueue_InsertCommand(node);    // uses EDI (unaffected register)
+        return;
+    }
+    // Interior node: recurse into children backwards
+    int ptr = node + 0x18 + childCount * 4;
+    do {
+        ptr -= 4;
+        childCount--;
+        RenderQueue_DirectDispatch(*(ptr), shadowMask, sectorMask2);
+    } while (childCount > 0);
+}
+```
+
+### Source of the NULL
+
+The NULL node comes from the recursive call. The function walks `node+0x18[i]` for `i` in `[childCount-1 .. 0]`. When a forced-visible sector has a render queue tree with uninitialized child pointers (because the sector was never streamed in or its objects were evicted), one of those child pointers is NULL. The recursion then calls `RenderQueue_DirectDispatch(NULL, ...)`, which crashes at `*(NULL + 0x14)`.
+
+This is consistent with re-enabling sector visibility patches: sectors that the engine would normally skip (because they're outside the portal/PVS system) now have their render queues traversed, but the render queue node trees for those sectors may have NULL child entries.
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x40C390 | `RenderQueue_DirectDispatch` — NoCull recursive node dispatch (crash function) |
+| 0x40C3C4 | Crash instruction: `mov esi, [edi+0x14]` — reads child count from NULL node |
+| 0x40C430 | `RenderQueue_FrustumCull` — original frustum cull path (proxy redirects to 0x40C390) |
+| 0x40C412 | Self-recursive call inside DirectDispatch |
+| 0x40C60D | Call from FrustumCull's "fully inside" branch to DirectDispatch |
+
+### Fix: NULL Guard at 0x40C390
+
+The simplest fix is to add a NULL check at the function entry. The function is 149 bytes (0x40C390-0x40C425). Two options:
+
+**Option A: Inline NULL check (patch in proxy via memory write)**
+
+At function entry 0x40C390, the prologue is:
+```asm
+0x40C390: push ebp
+0x40C391: mov ebp, esp
+0x40C393: and esp, 0xFFFFFFF0
+0x40C396: push ecx
+0x40C397: push ebx
+0x40C398: mov ebx, [ebp+0x10]   ; sectorMask
+0x40C39B: test ebx, ebx
+0x40C39D: push esi
+0x40C39E: push edi
+0x40C39F: mov edi, [ebp+8]      ; node
+```
+
+The node pointer is loaded into EDI at 0x40C39F. The crash is at 0x40C3C4. We need to check EDI after 0x40C39F and bail if NULL.
+
+**Option B: Trampoline — write a small code cave that tests `[ebp+8]` early**
+
+Since the function has a standard prologue with `push ebp; mov ebp,esp`, we can check `[ebp+8]` (the node argument) immediately. The cleanest approach:
+
+Patch at 0x40C39F (after EDI is loaded from `[ebp+8]`):
+- Original bytes at 0x40C39F: `8B 7D 08` (mov edi, [ebp+8])
+- After 0x40C39F + 3 = 0x40C3A2, the next instruction is a conditional jump
+
+**Recommended: Patch the callers or add a check after EDI load.**
+
+Insert after `mov edi, [ebp+8]` at 0x40C39F:
+```asm
+; At 0x40C3A2, currently: je 0x40C3B1 (2 bytes: 74 0D)
+; We need 4 bytes for: test edi,edi / jz <epilogue>
+```
+
+Actually the cleanest proxy-level fix: **check the node argument before the dereference at 0x40C3C4**. Replace:
+```asm
+0x40C3C4: 8B 77 14              mov esi, [edi+0x14]
+```
+With a jump to a trampoline that does:
+```asm
+test edi, edi
+jz skip_node
+mov esi, [edi+0x14]
+jmp back
+skip_node:
+; pop saved regs, return
+```
+
+**Simplest proxy patch (6 bytes at 0x40C3C1):**
+
+Looking at 0x40C3C1-0x40C3C9:
+```asm
+0x40C3C1: 89 45 0C        mov [ebp+0xc], eax     ; store updated shadowMask
+0x40C3C4: 8B 77 14        mov esi, [edi+0x14]     ; childCount = node->children
+0x40C3C7: 85 F6           test esi, esi
+0x40C3C9: 75 36           jne 0x40C401            ; if children, recurse
+```
+
+We cannot easily inline the check without a trampoline. But there IS a simpler approach:
+
+**Patch at 0x40C3B1 where the flow merges before the crash.** At 0x40C3B1:
+```asm
+0x40C3B1: 8B 45 0C        mov eax, [ebp+0xc]      ; shadowMask
+0x40C3B4: 85 C0           test eax, eax
+0x40C3B6: 74 0C           je 0x40C3C4              ; skip if no shadowMask
+```
+
+The `je 0x40C3C4` at 0x40C3B6 jumps directly to the crash site. But the flow also falls through from 0x40C3C1.
+
+**Best approach for the proxy: add a null-check trampoline.** The proxy already has `TRL_ApplyMemoryPatches`. Add:
+
+1. Allocate a small code cave (VirtualAlloc or use slack space after function)
+2. At 0x40C3C4, replace `8B 77 14` (3 bytes) with a JMP to trampoline
+3. Trampoline: `test edi,edi; jz bail; mov esi,[edi+0x14]; jmp 0x40C3C7`
+4. Bail: `xor esi,esi; jmp 0x40C3C7` (sets childCount=0, which makes it a leaf that just calls InsertCommand — which also uses EDI so this would still crash)
+
+Wait — if EDI is NULL, we can't call `RenderQueue_InsertCommand(EDI)` either. The bail path must skip the entire node processing. The function's two return points are at 0x40C400 (`ret`) and 0x40C424 (`ret`). Both are plain `ret` after `pop edi; pop esi; pop ebx; mov esp,ebp; pop ebp`.
+
+**Cleanest fix: Check node argument at function ENTRY and return immediately if NULL.**
+
+At 0x40C390, replace:
+```asm
+55              push ebp           ; 1 byte
+8B EC           mov ebp, esp       ; 2 bytes
+83 E4 F0        and esp, 0xFFF0    ; 3 bytes
+51              push ecx           ; 1 byte  
+53              push ebx           ; 1 byte
+8B 5D 10        mov ebx, [ebp+10]  ; 3 bytes  = 11 bytes
+```
+
+With:
+```asm
+8B 44 24 04     mov eax, [esp+4]   ; load node arg (before push ebp)
+85 C0           test eax, eax
+74 XX           je <ret>           ; if NULL, return (XX = offset to a RET)
+55              push ebp           ; original prologue continues
+...
+```
+
+That's 8 bytes for the guard + the original 11 bytes = 19 bytes, but we only have 11 bytes of original prologue space. We'd need a trampoline.
+
+**Simplest practical fix for the proxy:**
+
+Overwrite the first 5 bytes of `RenderQueue_DirectDispatch` (0x40C390) with a `JMP` to a code cave. The code cave checks `[esp+4]` (node arg), returns if NULL, otherwise executes the original 5 bytes and jumps back.
+
+Proxy code cave (allocated with VirtualAlloc):
+```asm
+cmp dword ptr [esp+4], 0    ; 8 bytes: 83 7C 24 04 00
+je null_bail                 ; 2 bytes: 74 09
+push ebp                     ; 1 byte (original)
+mov ebp, esp                 ; 2 bytes (original)
+and esp, 0xFFFFFFF0          ; 3 bytes (original — but this is 3 bytes: 83 E4 F0)
+jmp 0x40C396                 ; 5 bytes (jump back after stolen bytes)
+null_bail:
+ret                          ; 1 byte: C3
+```
+
+Total cave: 22 bytes. Patch at 0x40C390: `E9 XX XX XX XX` (JMP rel32 to cave) + NOP (since original prologue was `55 8B EC 83 E4 F0` = 6 bytes, and JMP is 5).
+
+### Suggested Live Verification
+
+1. `livetools bp add 0x40C3C4` then `regs` — confirm EDI=0 at crash
+2. `livetools mem write 0x40C390 <cave_jmp_bytes>` — apply the null guard
+3. After fix: `livetools trace 0x40C390 --count 100 --read "[esp+4]:4:ptr"` — count how many NULL nodes are being skipped
+
+## Code Cave Search Near 0x40C390 -- 2026-04-12
+
+### Summary
+
+Searched for 15+ consecutive INT3 (0xCC) padding bytes usable as code caves near the RenderQueue uncull path (0x40C390) and RenderQueue_FrustumCull (0x40C430). MSVC 16-byte function alignment produces exactly 15-byte caves between every pair of functions. Six caves found within the 0x40B000-0x410000 range. No caves larger than 15 bytes exist in the .text section near these addresses -- all 20+ byte caves are in the 0xED-0xEF range (far away).
+
+### Function Boundaries
+
+| Function | Start | End | Size |
+|----------|-------|-----|------|
+| Uncull path (0x40C390) | 0x40C390 | 0x40C425 (RET) | 149 bytes |
+| RenderQueue_FrustumCull | 0x40C430 | 0x40C644 (last RET) | 532 bytes |
+
+Gap between functions: 0x40C425 (RET) to 0x40C430 = only 5 bytes of INT3 (0x40C425-0x40C429). NOT usable.
+
+### Available Code Caves (15 bytes each, nearest to 0x40C390)
+
+| Address Range | Size | Distance from 0x40C390 | JMP rel32 offset |
+|---------------|------|----------------------|------------------|
+| **0x40CA21 - 0x40CA2F** | **15 bytes** | **+0x691 (closest)** | +0x68C |
+| 0x40BB41 - 0x40BB4F | 15 bytes | -0x84F | -0x854 |
+| 0x40E4A1 - 0x40E4AF | 15 bytes | +0x2111 | +0x210C |
+| 0x40EA51 - 0x40EA5F | 15 bytes | +0x26C1 | +0x26BC |
+| 0x40F9F1 - 0x40F9FF | 15 bytes | +0x3661 | +0x365C |
+| 0x40FA51 - 0x40FA5F | 15 bytes | +0x36C1 | +0x36BC |
+
+### Recommendation
+
+**Best candidate: 0x40CA21** -- closest cave to 0x40C390 at only +0x691 bytes away. It sits between the end of a function (RET at 0x40CA20) and the start of the next function at 0x40CA30. This is dead padding that will never be executed by the game.
+
+If you need more than 15 bytes, you have two options:
+1. Use a far cave in the 0xEDxxxx range (e.g., 0xEDF9E3 has 20+ bytes) with a longer JMP
+2. Chain two nearby 15-byte caves with a short JMP between them (0x40CA21 + 0x40CA4E has 2 more bytes of padding before 0x40CA50)
+
+### Context: What Follows Each Cave
+
+| Cave | Next function starts at | Next function does |
+|------|------------------------|--------------------|
+| 0x40CA21 | 0x40CA30 | Reads 0x10FC914, calls 0x48E540 |
+| 0x40BB41 | 0x40BB50 | Reads 0x10024E8, checks 0x1159DB4 |
+| 0x40E4A1 | 0x40E4B0 | Array index calc with 0xFFA728 base |
+
+
+## Layer 30 Crash Analysis: Illegal Instruction at 0x40C395 -- 2026-04-12
+
+### Summary
+
+The crash at 0x40C395 is caused by the null-guard trampoline (code cave) jumping back into the middle of a 3-byte `and esp, 0xFFFFFFF0` instruction. The trampoline at 0xEE2602 steals 5 bytes from the prologue of 0x40C390 (the NoCull function), then jumps back to `funcBody = 0x40C395`. But the stolen bytes in the cave are wrong -- they steal `push ebp; mov ebp, esp; push esi; push edi` (5 bytes) instead of the actual 5-byte prologue `push ebp; mov ebp, esp; and esp, 0xFFFFFFF0` (1+2+3=6 bytes, only first 5 stolen). The jump-back target 0x40C395 lands on byte `F0`, which is the last byte of `and esp, 0xFFFFFFF0` (opcode `83 E4 F0`). The CPU interprets `F0` as a LOCK prefix followed by `push ecx` (`51`), and `LOCK PUSH` is an illegal instruction.
+
+### Root Cause: Stolen Prologue Mismatch
+
+The actual function prologue at 0x40C390 is:
+
+```
+0x40C390: 55           push ebp           (1 byte)
+0x40C391: 8B EC        mov ebp, esp       (2 bytes)  -- cumulative: 3 bytes
+0x40C393: 83 E4 F0     and esp, 0xFFFFFFF0 (3 bytes) -- cumulative: 6 bytes
+0x40C396: 51           push ecx           (1 byte)
+0x40C397: 53           push ebx           (1 byte)
+```
+
+The code cave at 0xEE2602 contains these "stolen" bytes:
+
+```c
+0x55,                            /* push ebp (stolen) */
+0x8B, 0xEC,                      /* mov ebp, esp (stolen) */
+0x56,                            /* push esi (stolen) -- WRONG: actual byte is 83 */
+0x57,                            /* push edi (stolen) -- WRONG: actual byte is E4 */
+```
+
+The cave steals `push ebp; mov ebp, esp; push esi; push edi` (5 bytes), but the real prologue is `push ebp; mov ebp, esp; and esp, 0xFFFFFFF0` (6 bytes for first 3 instructions). The 5-byte JMP at 0x40C390 overwrites bytes 55 8B EC 83 E4, and `funcBody` is set to 0x40C395 (0x40C390 + 5). But 0x40C395 is the last byte (`F0`) of the 3-byte `and` instruction that started at 0x40C393.
+
+### Execution Flow
+
+1. RenderQueue_FrustumCull (0x40C430) is patched with `JMP 0x40C390` (Layer 30 bypass)
+2. 0x40C390 is patched with `JMP 0xEE2602` (null-guard trampoline)
+3. At cave 0xEE2602: check if `[esp+4] == NULL`, if so return 0
+4. Otherwise execute stolen prologue: `push ebp; mov ebp,esp; push esi; push edi`
+5. Jump to 0x40C395 -- lands mid-instruction on byte `F0`
+6. CPU decodes `F0 51` as `LOCK PUSH ECX` -- illegal instruction, crash
+
+### Disassembly Evidence
+
+**Around jump target 0x40C380 (end of previous function + padding):**
+```
+0x40C380: in       eax, 0x5d     -- previous function epilogue
+0x40C382: ret
+0x40C383-0x40C38F: int3          -- padding (13 bytes)
+0x40C390: push     ebp           -- NoCull function entry
+0x40C391: mov      ebp, esp
+0x40C393: and      esp, 0xfffffff0  <-- 3-byte instruction: 83 E4 F0
+0x40C396: push     ecx
+0x40C397: push     ebx
+0x40C398: mov      ebx, [ebp+0x10]
+```
+
+**Patch site at 0x40C430 (RenderQueue_FrustumCull):**
+```
+0x40C430: push     ebp           -- patched to: E9 5B FF FF FF (jmp 0x40C390)
+0x40C431: mov      ebp, esp
+0x40C433: and      esp, 0xfffffff0
+0x40C436: sub      esp, 0x44
+```
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x40C430 | RenderQueue_FrustumCull entry -- patched with JMP to 0x40C390 |
+| 0x40C390 | RenderQueue_NoCull (DirectDispatch) entry -- patched with JMP to cave 0xEE2602 |
+| 0x40C393 | `and esp, 0xFFFFFFF0` -- 3-byte instruction (83 E4 F0) |
+| 0x40C395 | Mid-instruction byte F0 -- crash site (LOCK prefix) |
+| 0xEE2602 | Null-guard code cave -- stolen bytes are wrong |
+
+### Fix
+
+The stolen prologue in the cave must match the actual bytes at 0x40C390. Two options:
+
+**Option A: Steal exactly 6 bytes (preferred)**
+
+Steal `push ebp; mov ebp, esp; and esp, 0xFFFFFFF0` (6 bytes) and jump back to 0x40C396:
+
+```c
+unsigned int funcBody = 0x40C396;  /* after 6-byte prologue */
+unsigned char cave[] = {
+    0x83, 0x7C, 0x24, 0x04, 0x00,  /* cmp dword [esp+4], 0 */
+    0x74, 0x0B,                      /* je +11 -> ret */
+    0x55,                            /* push ebp (stolen) */
+    0x8B, 0xEC,                      /* mov ebp, esp (stolen) */
+    0x83, 0xE4, 0xF0,               /* and esp, 0xFFFFFFF0 (stolen) */
+    0xE9, 0x00, 0x00, 0x00, 0x00,   /* jmp funcBody */
+    0x33, 0xC0,                      /* xor eax, eax */
+    0xC3                             /* ret */
+};
+/* jmp funcBody offset: from caveAddr+13+5=caveAddr+18 to funcBody */
+*(int*)(cave + 14) = (int)(funcBody - (caveAddr + 18));
+```
+
+**Option B: Steal 5 bytes but adjust to instruction boundary**
+
+The first 5 bytes (55 8B EC 83 E4) end mid-instruction. This is not cleanly stealable at 5 bytes. Must steal 3 bytes (push ebp; mov ebp, esp) or 6 bytes. At 3 bytes, `funcBody = 0x40C393` and the cave omits the AND:
+
+```c
+unsigned int funcBody = 0x40C393;
+unsigned char cave[] = {
+    0x83, 0x7C, 0x24, 0x04, 0x00,
+    0x74, 0x08,
+    0x55,
+    0x8B, 0xEC,
+    0xE9, 0x00, 0x00, 0x00, 0x00,
+    0x33, 0xC0,
+    0xC3
+};
+```
+
+But this requires only a 3-byte overwrite at 0x40C390, which is not enough for a 5-byte JMP. So **Option A (steal 6 bytes) is the correct fix**.
+
+Note: with 6 stolen bytes, the 5-byte JMP at 0x40C390 overwrites bytes 0x40C390-0x40C394. Byte 0x40C395 (F0) is left as garbage but is never reached because the cave jumps to 0x40C396. This is safe.
+
+### Suggested Live Verification
+
+After applying the fix:
+- `livetools mem read 0xEE2602 32` -- verify cave bytes match the corrected stolen prologue
+- `livetools mem read 0x40C390 8` -- verify 5-byte JMP + unreachable byte + first byte of push ecx
+- `livetools trace 0x40C396 --count 5` -- confirm execution reaches 0x40C396 without crash
+
+## Crash Investigation: 0x40C395 Illegal Instruction — 2026-04-12
+
+### Summary
+
+The crash at 0x40C395 after patching a JMP at 0x40C430→0x40C390 is caused by a **misidentified jump target**. The proxy patches `0x40C430` (RenderQueue_FrustumCull entry) to redirect to `0x40C390`, which IS a valid instruction start (function prologue `push ebp`). However, the CLAUDE.md says the patch is "JMP 0x40C430→0x40C390" — the confusion is about which address gets the JMP written. If the JMP is written AT 0x40C430 with target 0x40C390, this is correct. But if the previous findings describe a code cave at 0x40C390 that overwrites the prologue there, that is the source of the crash — the cave JMP at 0x40C390 clobbers 5 bytes of the NoCull function's prologue, and byte 0x40C395 becomes `F0` (LOCK prefix) which, without a valid following instruction, triggers an illegal instruction exception.
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x40C380 | End of previous function: `in eax, 0x5d; ret` followed by int3 padding |
+| 0x40C390 | **NoCull function entry** — valid `push ebp; mov ebp, esp; and esp, 0xFFFFFFF0` prologue |
+| 0x40C395 | Byte `F0` in original code — this is the `0xF0` from `and esp, 0xFFFFFFF0` (opcode `83 E4 F0`). If 0x40C390-0x40C394 are overwritten by a 5-byte JMP, execution falls to 0x40C395 which is now orphaned byte `F0` = LOCK prefix with no valid instruction following |
+| 0x40C396 | `push ecx` — first instruction after the clobbered prologue |
+| 0x40C400 | NoCull function `ret` |
+| 0x40C420 | End of NoCull function: `pop ebx; mov esp, ebp; pop ebp; ret` + int3 padding |
+| 0x40C430 | **RenderQueue_FrustumCull entry** — `push ebp; mov ebp, esp; and esp, 0xFFFFFFF0; sub esp, 0x44` |
+
+### Detailed Disassembly
+
+**Region 0x40C380-0x40C3AF (NoCull path and surroundings):**
+
+```
+0x40C380: in    eax, 0x5d          ; end of prior function
+0x40C382: ret
+0x40C383-0x40C38F: int3 padding (13 bytes)
+
+; --- NoCull function (RenderQueue_NoCull) ---
+0x40C390: push  ebp                ; 55
+0x40C391: mov   ebp, esp           ; 8B EC
+0x40C393: and   esp, 0xFFFFFFF0    ; 83 E4 F0
+0x40C396: push  ecx                ; 51
+0x40C397: push  ebx                ; 53
+0x40C398: mov   ebx, [ebp+0x10]    ; 8B 5D 10
+0x40C39B: test  ebx, ebx           ; 85 DB
+0x40C39D: push  esi                ; 56
+0x40C39E: push  edi                ; 57
+0x40C39F: mov   edi, [ebp+8]       ; 8B 7D 08
+0x40C3A2: je    0x40C3B1           ; 74 0D
+0x40C3A4: push  ebx
+0x40C3A5: mov   eax, edi
+0x40C3A7: call  0x40C250
+; ... continues to ret at 0x40C400
+```
+
+**Region 0x40C420-0x40C4AD (FrustumCull function):**
+
+```
+; --- NoCull epilogue ---
+0x40C420: pop   ebx
+0x40C421: mov   esp, ebp
+0x40C423: pop   ebp
+0x40C424: ret
+0x40C425-0x40C42F: int3 padding (11 bytes)
+
+; --- RenderQueue_FrustumCull ---
+0x40C430: push  ebp                ; 55
+0x40C431: mov   ebp, esp           ; 8B EC
+0x40C433: and   esp, 0xFFFFFFF0    ; 83 E4 F0
+0x40C436: sub   esp, 0x44          ; 83 EC 44
+0x40C439: push  ebx                ; 53
+0x40C43A: push  esi                ; 56
+0x40C43B: push  edi                ; 57
+; ... frustum test logic with SIMD, fpu compares ...
+```
+
+**Raw bytes at 0x40C380 (32 bytes):**
+```
+E5 5D C3 CC CC CC CC CC CC CC CC CC CC CC CC CC
+55 8B EC 83 E4 F0 51 53 8B 5D 10 85 DB 56 57 8B
+```
+
+Offset 0x10 from 0x40C380 = 0x40C390: bytes are `55 8B EC 83 E4 F0 51 53 ...`
+
+### Root Cause Analysis
+
+There are two separate issues being conflated:
+
+1. **The Layer 30 bypass (JMP at 0x40C430 → 0x40C390):** This patches the ENTRY of RenderQueue_FrustumCull (0x40C430) with a `JMP rel32` to 0x40C390 (RenderQueue_NoCull). This is architecturally correct — both functions share the same calling convention and parameter layout (`this`, `param2`, `param3`). The JMP would redirect all frustum-culled submissions to the uncull path.
+
+2. **The code cave conflict (from previous findings):** The previous finding at the bottom of this file describes a code cave JMP written AT 0x40C390 that redirects to 0x40C396. If BOTH patches are active simultaneously:
+   - 0x40C430 gets `JMP 0x40C390`
+   - 0x40C390 gets `JMP 0x40C396` (5 bytes: `E9 01 00 00 00`)
+   - This overwrites `55 8B EC 83 E4` with `E9 01 00 00 00`
+   - Execution from 0x40C430 jumps to 0x40C390, hits `JMP 0x40C396`, lands at 0x40C396 (`push ecx`) — but **the stack frame was never set up** (push ebp / mov ebp, esp / and esp were all clobbered). The function will crash when it tries to access `[ebp+0x10]` at 0x40C398 because ebp was never saved/set.
+
+3. **If only the Layer 30 JMP is active (no cave):** The JMP at 0x40C430 redirects to 0x40C390 which is a valid `push ebp` prologue. This should work correctly. The crash at 0x40C395 suggests the 5-byte JMP at 0x40C430 is NOT the only patch — something is also clobbering 0x40C390.
+
+### Correct Fix
+
+**Option A — JMP at 0x40C430 only, no cave at 0x40C390:**
+
+Patch 0x40C430 with `E9 BB FE FF FF` (JMP 0x40C390). Do NOT also patch 0x40C390. The NoCull function at 0x40C390 has a proper prologue and epilogue. This makes every call to RenderQueue_FrustumCull execute the NoCull path instead.
+
+Encoding: `0x40C390 - (0x40C430 + 5) = -0xA5 = 0xFFFFFF5B`... wait, let me recalculate:
+- JMP from 0x40C430, instruction is 5 bytes, so next_ip = 0x40C435
+- Displacement = 0x40C390 - 0x40C435 = -0xA5 = 0xFFFFFF5B
+- Patch bytes: `E9 5B FF FF FF`
+
+**Option B — Patch callers of 0x40C430 to call 0x40C390 instead:**
+
+Find all `call 0x40C430` sites and redirect them to `call 0x40C390`. Avoids modifying either function's code.
+
+**Option C — RET-early at 0x40C430:**
+
+Simplest: make RenderQueue_FrustumCull a no-op that falls through to the submission path. But this only works if the caller handles the "no cull" case — need to verify.
+
+### NoCull Function Signature
+
+The function at 0x40C390 takes 3 parameters (ebp+8, ebp+0xC, ebp+0x10) and:
+- Param1 (ebp+8) = render queue object pointer (stored in edi)
+- Param2 (ebp+0xC) = optional filter/transform (passed to 0x40B2D0 if non-null)
+- Param3 (ebp+0x10) = count or batch parameter (passed to 0x40C250 if non-zero)
+- Reads [edi+0x14] (queue item count) and [edi+0x10] (queue data pointer)
+- Calls 0x40D9B0 (batch submit) and 0x40ACB0 (draw submission)
+
+### Suggested Live Verification
+
+- `livetools mem read 0x40C390 8` — verify prologue bytes are intact (`55 8B EC 83 E4 F0 51 53`)
+- `livetools mem read 0x40C430 8` — verify JMP patch bytes (`E9 5B FF FF FF ...`)
+- Ensure no other patch writes to 0x40C390-0x40C395
+- If the cave patch from previous findings IS active, remove it — the Layer 30 JMP alone is sufficient
+
+---
+
+## CPU Smooth Normals in Proxy — FAILED — 2026-04-12
+
+### Approach
+
+Attempted to compute area-weighted smooth normals on the CPU in the proxy DLL, injecting them as FLOAT3 on stream 1 via a modified vertex declaration. Goal: give every mesh smooth normals without tagging individual texture hashes in `rtx.smoothNormalsTextures`.
+
+### What Was Built
+
+- `ComputeSmoothNormals()`: for indexed draws, locked IB + VB, computed cross-product face normals per triangle, accumulated per shared vertex (area-weighted), normalized. For non-indexed draws, computed flat face normals per triangle.
+- `PrepareNormalsForVBDraw()` rewritten to lock IB and call the new compute function instead of the old SHORT4N/DEC3N → FLOAT3 conversion path.
+- `GetModifiedDecl()` extended with `DECL_MOD_ADD_NORMAL` flag to inject a FLOAT3 NORMAL element on stream 1 even when the original declaration had no NORMAL.
+- `WD_SetVertexDeclaration()` always sets `normalConvertNeeded = 1` and applies either `DECL_MOD_REDIR_NORMAL` or `DECL_MOD_ADD_NORMAL`.
+- `WD_SetIndices()` hook added (replacing `Relay_104`) to track current IB pointer.
+- All 4 draw paths (DIP, DP, DPUP, DIPUP) updated to pass index params.
+- Scratch buffer: 768 KB static array for accumulation (65K vertex max).
+- No-CRT helpers: `zero_floats()`, `proxy_sqrtf()` via x87 fsqrt.
+
+### Build Result
+
+Compiled successfully. Did not work at runtime.
+
+### RTX Remix Smooth Normals Research
+
+- **`rtx.smoothNormalsTextures`** is the only Remix control — uses **texture hashes** (not mesh hashes), no global toggle exists.
+- When a draw call's texture matches, Remix computes area-weighted smooth normals on the GPU via `dispatchSmoothNormals()`.
+- Without normals in the vertex declaration, `normalBuffer` is undefined — Remix has no per-vertex normals for ray tracing.
+- With FLOAT3 normals present, Remix uses them as-is unless also tagged in `smoothNormalsTextures`.
+- TRL's vertex shaders do NOT output a NORMAL semantic, so `useVertexCapturedNormals` has no effect for this game.
+
+### Why It Failed (Hypotheses)
+
+1. **Hash change**: Adding NORMAL to every vertex declaration changes all geometry descriptor hashes. All mod.usda anchors, light placements, and material assignments become stale.
+2. **Possible IB lock failure**: TRL's index buffers may be in D3DPOOL_DEFAULT with no READONLY lock support through the dxwrapper/Remix chain, causing silent fallback to up-normals.
+3. **Stream 1 conflict**: Binding a staging VB on stream 1 for normals may conflict with Remix's vertex capture mechanism when `useVertexCapture=True`.
+4. **Declaration mismatch**: The modified declaration (with NORMAL on stream 1) may not match what Remix expects when it intercepts the draw call.
+
+### Dead End Classification
+
+**Approach is sound in principle but impractical for this project** — the hash disruption alone makes it unsuitable without a full re-capture workflow. The simpler alternative (`rtx.smoothNormalsTextures` with texture hash tagging) avoids all proxy complexity.
+
+### Recommended Alternative
+
+Use `rtx.smoothNormalsTextures` in rtx.conf with a comprehensive list of texture hashes. A one-time dx9tracer capture can dump all unique texture hashes bound during gameplay. This lets Remix compute smooth normals on the GPU (faster, no per-draw CPU cost) without changing geometry descriptor hashes.

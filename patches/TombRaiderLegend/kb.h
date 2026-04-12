@@ -315,6 +315,51 @@ struct RenderContext {
 @ 0x005BE7B0 bool __cdecl SectorVisibility_BitfieldCheck(void* meshEntry);
              //   Reads mesh ID from meshEntry+0x54, checks bit in PVS bitfield
              //   Bitfield: [0x11397C0] + 0x33D8, size 0x47C bytes (9184 mesh bits)
+@ 0x005BE540 uint16_t* __cdecl SectorCommandBuffer_Search(int sectorId);
+             //   Searches render command buffer at [g_pRenderStructure]+0x3854
+             //   Returns matching command entry or NULL
+@ 0x00455780 uint32_t __cdecl MeshSubmit_RenderObjectFilter(int meshEntry);
+             //   Checks mesh against render object table at 0x10C5BC0 (stride 0x260)
+             //   Returns render object ptr if [renderObj+0xA4] & 0x20 is set, else 0
+@ 0x00455700 int __cdecl MeshSubmit_ObjectTrackerSearch(int meshEntry, int* outSectorId);
+             //   Searches ObjectTracker entries (0x1158300, stride 0x5C) for mesh by sector ID
+             //   Returns mesh entry ptr from tracker, or 0 if not found
+@ 0x00461A90 int __cdecl MeshSubmit_AlternatePath(void* meshEntry, short sectorIdx);
+             //   Alternate submission path for LOD/instance meshes
+             //   Used when ObjectTracker data flags bit 0x100 or mesh flags bit 0x200000 set
+@ 0x0044FB60 void __cdecl ObjectTracker_IterateAndSubmitMeshes(void);
+             //   Iterates all ObjectTracker slots (0x11582F8, stride 0x5C, up to 0x11585D8)
+             //   For state==2 entries, calls Sector_IterateMeshArray with mesh array data
+
+// MeshEntry struct — 0x70 bytes per mesh in sector mesh arrays
+struct MeshEntry {
+    float bounds0[4];               // +0x00 bounding box / position row 0
+    float bounds1[4];               // +0x10 bounding box / position row 1
+    // gap 0x20..0x3F
+    float scale[4];                 // +0x40 scale vector (used if flags & 0x100000)
+    int16_t resourceKey;            // +0x50 ObjectTracker resource key
+    uint16_t field_52;              // +0x52 copied to render cmd +0x92
+    uint32_t sectorId;              // +0x54 sector ID for visibility checks
+    // gap 0x58..0x5B
+    uint32_t flags;                 // +0x5C visibility/state flags — see flag table below
+    uint32_t field_64;              // +0x64 copied to render cmd +0x1C4
+};
+// MeshEntry.flags bit definitions:
+//   0x00100000 — use mesh scale from +0x40 (else default 1.0)
+//   0x00200000 — divert to alternate submission path (0x461A90)
+//   0x00400000 — sets render flag 0x08 at [cmd+0xAC]
+//   0x00800000 — sets render flag 0x20000 at [cmd+0xA8]
+//   0x01000000 — triggers material/sort function 0x465A60
+//   0x02000000 — BLOCKS Sector_IterateMeshArray (tested at 0x46C337)
+//   0x04000000 — triggers sort key path (if objData[4]==0xFFFFFFFF)
+//   0x10000000 — shadow/decal path
+//   0x80000000 — "already submitted" marker, set by VisibilityGate on success
+
+// ObjectTracker entry layout (stride 0x24, base 0x11585D8)
+// +0x00: data pointer (points to mesh/resource data)
+// +0x08: data sub-pointer (flags at [data+4])
+// +0x0E: state byte (must be 2 = loaded for draw submission)
+// +0x10: reference count (uint16_t)
              //   Returns true if mesh bit is SET (mesh already in PVS)
 @ 0x005BE540 uint16_t* __cdecl SectorCommandBuffer_Search(int sectorId);
              //   Searches command buffer at [0x11397C0]+0x3854 for matching sector ID
@@ -852,3 +897,76 @@ $ 0x010E5451 char loadState
 $ 0x00F2B3F8 char* g_null_string_narrow
 $ 0x00F2B3FC wchar_t* g_null_string_wide
 $ 0x00F0A398 uint8_t _chartype_table[256]
+
+// ============================================================
+// ProcessPendingRemovals — node cleanup for 3 linked lists
+// ============================================================
+@ 0x00436680 void __cdecl ProcessPendingRemovals(void);
+// Iterates 3 linked lists, checks field_48->0xA4 and field_AC->0xA4
+// for "pending removal" flag (bit 0x20), unlinks matching nodes.
+// Callers: 0x457A0A, 0x461999, 0x5D4D24
+
+$ 0x0107F6E4 void* g_pendingRemovalList1_head
+$ 0x0107F6DC void* g_pendingRemovalList2_head
+$ 0x0107F6EC void* g_pendingRemovalList3_head
+$ 0x0107F6F8 void* g_pendingRemoval_current
+$ 0x0107F6C0 void** g_slotArray_base
+$ 0x0107F6F0 void* g_pendingRemoval_freeList
+
+@ 0x0045BD50 void __cdecl PendingRemoval_Unlink(void* node);
+@ 0x0045BD30 void __cdecl ListLinker(void* listHead, void* node);
+@ 0x00461540 void __cdecl PendingRemoval_CleanupAC(void* field_AC);
+
+// ============================================================
+// Mesh submission pipeline — crash root cause analysis
+// ============================================================
+@ 0x0046C320 void __cdecl Sector_IterateMeshArray(int meshArray, int sceneCtx);
+// meshArray+4 = count, meshArray+8 = meshEntry* (stride 0x70)
+// Flag test at 0x46C337: test [meshEntry+0x5C], 0x82000000
+// Bit 0x80000000 = already submitted, Bit 0x02000000 = not-submittable (resource not loaded)
+
+@ 0x00458630 int __cdecl MeshSubmit(int meshEntry, int sectorIdx, int forceVisible);
+// Uses meshEntry+0x50 (resource key) -> ObjectTracker_Resolve
+// Alternate path at 0x45896C when obj flags bit 0x100 OR mesh flags bit 0x200000
+
+@ 0x00461A90 int __cdecl MeshSubmit_AlternatePath(int meshEntry, int sectorIdx);
+// Lighter mesh submission — no VisibilityGate check, calls command dispatch (0x4458B0)
+
+@ 0x005D4240 int __cdecl ObjectTracker_Resolve(int resourceKey, int param2);
+// Returns (slot_index * 0x24 + 0x11585D8) or 0 if not found
+
+@ 0x005D5390 int __cdecl ObjectTracker_FindOrLoad(int resourceKey);
+// Looks up resource in tracker (0x11585D8 array, 0x5E slots, stride 0x24)
+// On miss: constructs path via 0x45C730 -> sprintf("%s%s.%s", base, name, "drm")
+// CRASH: if resourceKey is stale, _g_resourceMap[resourceKey*8-4] -> garbage -> sprintf %s crash
+
+@ 0x005D4870 int __cdecl ResourceLookup_ByHash(int hashKey);
+// Linear search through 0x11582F8 (stride 0x5C) for matching hash
+
+@ 0x004266A0 void __cdecl DebugPrint(char* fmt, ...);
+// sprintf -> OutputDebugString wrapper. 10 call sites in the binary.
+
+@ 0x0045C730 void __cdecl ConstructObjectPath(char* buf, int namePtr, char* ext);
+// sprintf(buf, "%s%s.%s", ...) with ext typically "drm"
+
+@ 0x00EE534E int __cdecl sprintf_impl(char* buf, char* fmt, ...);
+// Statically linked MSVC CRT sprintf
+
+@ 0x00EE52F6 int __cdecl sprintf_impl2(char* buf, char* fmt, ...);
+// Alternate sprintf entry, calls _output at 0xEE8383 directly
+
+@ 0x00EE8383 int __cdecl _output(void* stream, char* fmt, va_list args);
+// MSVC CRT _output (printf formatter). Crash at 0xEE88AD when %s ptr is invalid.
+
+@ 0x00454A00 int __cdecl RenderContext_Alloc(void);
+// Allocates from free list at 0x10C5AAC. Returns render context ptr or 0.
+
+@ 0x004458B0 int __cdecl RenderCommand_Dispatch(int obj, int param2, uchar* cmdData, int param4, int param5, uint param6);
+// 49-case switch table at 0x4460F0 for rendering commands
+
+$ 0x011585D8 ObjectTrackerEntry g_objectTracker[0x5E]
+// stride 0x24, slot+0x0C = object name string (used by DebugPrint %s)
+// slot+0x0E = state (2 = loaded)
+
+$ 0x011582F8 ResourceEntry g_resourceEntries[]
+// stride 0x5C, searched by ResourceLookup_ByHash
