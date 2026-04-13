@@ -4005,3 +4005,121 @@ Compiled successfully. Did not work at runtime.
 ### Recommended Alternative
 
 Use `rtx.smoothNormalsTextures` in rtx.conf with a comprehensive list of texture hashes. A one-time dx9tracer capture can dump all unique texture hashes bound during gameplay. This lets Remix compute smooth normals on the GPU (faster, no per-draw CPU cost) without changing geometry descriptor hashes.
+
+## Chapter 2 FAST_FAIL Crash Analysis — 2026-04-13
+
+### Summary
+
+The chapter-2-specific crash (0xC000041D / STATUS_FATAL_USER_CALLBACK_EXCEPTION with Additional Info 0xEF78) is most likely caused by the **SectorPortalVisibility reset NOP patch** (0x46D1F1-0x46D205). By NOPing all 6 writes in the reset loop, the sector flag/bounds array at 0x1158300 retains stale values across chapter transitions. Chapter 4 (which works) may have sector geometry compatible with default/stale state, while chapter 2 has different sector topology that fails when flags from a prior chapter persist.
+
+### Key Addresses
+
+| Address | Description |
+|---------|-------------|
+| 0x0040D290 | Mesh/geometry submission function — null-deref path at 0x40D2AF when [ebp+0xC]==NULL, but only reachable when g_pEngineRoot->field_10 == 0 |
+| 0x0040E402 | Single caller of 0x40D290 — in the render queue submission path |
+| 0x0046CCB4 | Level writer #1 — `mov [0x10FC910], ecx` in epilogue, 6-byte NOP is clean |
+| 0x004E6DFA | Level writer #2 — `mov [0x10FC910], ecx` mid-function, 6-byte NOP is clean |
+| 0x0046D1D0 | SectorPortalVisibility — reset loop + portal walk |
+| 0x0046D1F1-0x46D205 | **NOPed reset writes** — 6 instructions, 23 bytes total |
+| 0x01158300 | Sector bounds/flags array — 8 slots of 0x5C bytes each |
+| 0x00EE88AD | ProcessPendingRemovals — `cmp byte ptr [eax], 0` (strlen-like loop), previously crash-patched |
+| 0x00B83EB2 | INT 29h (__fastfail) — in data/CRT section, classic __report_gsfailure pattern |
+
+### Analysis Details
+
+#### 1. Function 0x40D290 — Null Pointer Path at 0x40D2AF
+
+```asm
+0x40D299: mov eax, [0x1392E18]      ; g_pEngineRoot
+0x40D29E: mov ecx, [eax+0x10]       ; field_10
+0x40D2A1: test ecx, ecx
+0x40D2A6: jne 0x40D3EB              ; if field_10 != 0, RETURN (early exit)
+; --- falls through only when field_10 == 0 ---
+0x40D2AC: mov esi, [ebp+0xC]        ; second argument
+0x40D2AF: mov ecx, [esi+0x20]       ; DEREF — crash if esi==NULL
+```
+
+The function has exactly ONE call site (0x40E402). When `g_pEngineRoot->field_10 != 0`, the function returns immediately without touching arg2. When `field_10 == 0`, it proceeds to dereference arg2 at `[esi+0x20]`.
+
+**Verdict: Low probability for this specific crash.** A null pointer deref here would produce 0xC0000005 (access violation), not 0xC000041D. Could contribute if it happens inside a window message callback, but unlikely to be the primary cause.
+
+#### 2. Level Writer NOPs (0x46CCB4 and 0x4E6DFA)
+
+Both sites are `mov dword ptr [0x10FC910], ecx` — 6-byte instructions NOPed with 6 NOP bytes. Instruction boundary alignment verified: both are exactly 6 bytes. No adjacent instructions are disturbed.
+
+- 0x46CCB4: In function epilogue (after `add esp, 0x20; pop edi; pop esi`), writes the far-clip value just before `pop ebx; mov esp, ebp; pop ebp; ret`. NOPing removes the far-clip write; control flow is unchanged.
+- 0x4E6DFA: Mid-function in camera setup. Writes far-clip, then continues with `mov [esp+8], edx`. NOPing removes the write; subsequent code does not depend on ecx or the memory write.
+
+**Verdict: Not the cause.** These NOPs are surgically clean — correct size, no flow disruption, no downstream dependency on the write. The far-clip value is separately stamped to 1e30 in BeginScene.
+
+#### 3. SectorPortalVisibility Reset NOPs (0x46D1F1-0x46D205) — PRIME SUSPECT
+
+The reset loop at 0x46D1D0 iterates over a fixed 8-slot sector array (0x1158300 to 0x11585E0, stride 0x5C). Per sector, it writes 6 fields:
+
+| Offset from eax-2 | Field | Original Value | Purpose |
+|--------------------|-------|---------------|---------|
+| +0x00 (eax-2) | x | 0x200 (512) | Sector screen rect left |
+| +0x02 (eax) | y | 0x1C0 (448) | Sector screen rect top |
+| +0x04 (eax+2) | w | 0xFE00 (-512) | Sector screen rect width (negative = invisible) |
+| +0x06 (eax+4) | h | 0xFE40 (-448) | Sector screen rect height (negative = invisible) |
+| +0x08 (eax+6) | flags | 0 | Portal visibility flags — zeroed per frame |
+| +0x0C (eax+0xA) | flags2 | 0 | Extended flags — zeroed per frame |
+
+The portal walk phase (0x46D22B+) then sets `[sector+0x44]` (the flags field) for portal-reachable sectors by OR-ing in the walk result:
+```asm
+0x46D262: mov ecx, [esi+0x44]
+0x46D268: or  ecx, eax
+0x46D26A: mov [esi+0x44], ecx
+```
+
+**With the NOP patch**, all 6 fields retain values from the PREVIOUS FRAME — or more critically, from a PREVIOUS CHAPTER if the game was reloaded.
+
+**Why this causes a chapter-2-specific crash:**
+1. The sector array is hardcoded at 0x1158300 — it's a fixed global, not re-allocated per chapter.
+2. When chapter 4 loads, 8 sector slots get populated with ch4 bounds/flags.
+3. When chapter 2 loads, the reset loop (now NOPed) should zero all flags and set inverted bounds. Without the reset, ch4's flags persist.
+4. Chapter 2's portal walk expects to start from a clean state. Stale flags from ch4 cause the engine to treat ch2 sectors as portal-visible when they shouldn't be, or to dereference ch4-era pointers that are now invalid.
+5. Downstream code trusts `[sector+0x44] != 0` to mean "this sector has valid geometry ready to render" — with stale flags, it dereferences freed/reallocated memory, causing the crash.
+
+**The crash manifests as STATUS_FATAL_USER_CALLBACK_EXCEPTION (0xC000041D)** because TRL's render path likely runs inside a window message callback (WM_PAINT or similar), and the access violation from stale sector data triggers the unhandled exception path through ntdll.
+
+#### 4. ProcessPendingRemovals at 0xEE88AD
+
+```asm
+0xEE88AC: dec ecx
+0xEE88AD: cmp byte ptr [eax], 0     ; strlen-like byte scan
+0xEE88B0: je  0xEE88B7
+0xEE88B2: inc eax
+0xEE88B3: test ecx, ecx
+0xEE88B5: jne 0xEE88AC
+```
+
+This is a bounded strlen loop. The patch at this site (already applied) fixes a stale pointer issue. If the stale sector flags cause premature object removal, this could be a secondary crash vector.
+
+**Verdict: Secondary — already patched, but stale sector state could re-trigger related issues.**
+
+### Root Cause Ranking
+
+1. **SectorPortalVisibility reset NOPs (0x46D1F1-0x46D205)** — HIGH confidence. Stale sector flags across chapter transitions directly cause invalid state. Chapter 2 crashes because its sector topology differs from whatever chapter was loaded before.
+
+2. **Function 0x40D290 null path (0x40D2AF)** — LOW confidence. Wrong exception code for a null deref unless nested inside a callback.
+
+3. **Level writer NOPs** — NOT the cause. Clean patches with no side effects.
+
+### Suggested Fix
+
+Restore the flag-clearing writes at 0x46D202 and 0x46D205 (un-NOP them). These two writes zero the `flags` and `flags2` fields per sector. Without the flag clear, sectors carry stale "portal visible" state across chapter loads. The bounds writes (0x46D1F1-0x46D1FE) can remain NOPed — stale screen bounds won't crash, they'll just cause rendering glitches (over-rendering, which is acceptable for anti-culling).
+
+Specifically:
+- **Keep NOPed**: 0x46D1F1 (x), 0x46D1F5 (y), 0x46D1FA (w), 0x46D1FE (h) — bounds persistence is fine
+- **Restore**: 0x46D202 → `89 68 06` (mov [eax+6], ebp) — clear flags per frame
+- **Restore**: 0x46D205 → `89 68 0A` (mov [eax+0xA], ebp) — clear flags2 per frame
+
+This preserves the anti-culling benefit (stale bounds keep sectors render-eligible) while ensuring the flags are clean for each chapter's portal walk.
+
+### Suggested Live Verification
+
+1. **Confirm stale flags**: Before chapter 2 load, `livetools mem read 0x1158300 0x2E0` to dump all 8 sector entries. Compare against a fresh dump after chapter 4.
+2. **Selective un-NOP**: Use `livetools mem write 0x46D202 896806` and `livetools mem write 0x46D205 89680A` to restore flag clears at runtime, then attempt chapter 2 load.
+3. **Breakpoint on sector flags**: `livetools bp add 0x46D262` to catch the portal walk reading stale flags.

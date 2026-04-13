@@ -724,7 +724,29 @@ $ 0x0107F6B8 void* g_sceneGraphRoot      // scene graph root, passed to RenderSc
 
 $ 0xEFD40C float g_fOne = 1.0f
 $ 0xF0ECFC float g_fZero = 0.0f
+$ 0xEFDE04 float g_OneOver255 = 0.003922f
 $ 0xEFDDD0 const char* g_szOutOfTransientHeap = "Out of transient heap space!"
+
+// ============================================================
+// Water/Animated Texture System
+// ============================================================
+// Texture animation uses two VS constant paths:
+//   c6:      textureScroll {offsetU, offsetV, ?, scale} — proxy handles this
+//   c24-c27: texture transform matrix (3 rows) — NOT handled by proxy
+//   c17:     UV scroll offset {scrollU, scrollV, 0, 0} — NOT handled by proxy
+//
+// Material flag 0x40 at [material+0x20] enables UV scroll animation.
+// Scroll index packed in uint16 at [material+0x2C]: lo=U_idx, hi=V_idx.
+// Scroll = idx * (1/255) * g_scrollMultiplier(runtime at 0xF0ECFC).
+//
+// Water vertex displacement (Gerstner wave) is CPU-side via Lock/Unlock.
+@ 0x60EE40 void __thiscall TextureMatrix_Setup(void* drawableCtx, void* renderCtx);
+@ 0x60F9AF void WaterDrawable_Submit(void);
+@ 0x5E7A70 void __thiscall WaterVertex_GerstnerSimulate(float* waveState, short* srcVerts, short* dstVerts, int vertCount);
+@ 0x619310 void __thiscall WaterFX_Init(void* this, char enabled, unsigned int p3, unsigned int p4, unsigned int p5, unsigned int p6);
+@ 0x607B50 void TextureStage_SetSamplerAndTexture(int stageIdx, int texturePtr);
+@ 0x604B20 void __fastcall Material_SetFogMode(int objPtr);
+@ 0xECBA40 void __thiscall Renderer_SetVSConstantF_Wrapper(int startReg, float* data, int count);
 
 // ============================================================
 // Code caves in .text section (INT3 padding between functions)
