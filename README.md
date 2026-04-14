@@ -4,12 +4,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Platform: Windows x86](https://img.shields.io/badge/Platform-Windows%20x86-blue)
 ![Game: TRL 2006](https://img.shields.io/badge/Game-Tomb%20Raider%3A%20Legend%20(2006)-red)
-![Builds](https://img.shields.io/badge/Builds-075-orange)
+![Builds](https://img.shields.io/badge/Builds-077-orange)
 ![Status](https://img.shields.io/badge/Status-In%20Progress-yellow)
 
 A reverse engineering project to run Tomb Raider: Legend (2006) under NVIDIA RTX Remix — full path-traced lighting, stable geometry hashes, and complete scene visibility via a custom D3D9 FFP proxy DLL.
 
-**75 builds · All 31 culling layers patched · Replacement asset pipeline confirmed end-to-end (build 075) · Fresh mesh hash capture needed to anchor stage lights**
+**77 builds · All 31 culling layers patched · Cold launch stable (build 077) · Replacement asset pipeline confirmed end-to-end (build 075) · Fresh mesh hash capture needed to anchor stage lights**
 
 ---
 
@@ -75,13 +75,19 @@ NvRemixLauncher32.exe
 | Content fingerprint VB cache | ✅ Done | 046 |
 | Character draws — Lara visible in RTX | ✅ Done | 071b |
 | Replacement asset pipeline (mod lights, materials) | ✅ Confirmed end-to-end | 075 |
+| Crash protections restored (null-crash guard, PUREDEVICE strip) | ✅ Done | 076 |
+| Cold launch stable — DrawCache use-after-free fixed | ✅ Done | 077 |
 | **Both stage lights stable at all positions** | 🔄 In progress — fresh hash capture needed | — |
 
-### Current Blocker
+### Current State — Build 077
 
-**Build 075 breakthrough:** `user.conf` had `rtx.enableReplacementAssets=False`, silently disabling all mod content in every build from 016 through 074. Fixed. A purple test light appeared immediately, held stable across all 3 camera positions, and shifted correctly with camera movement — confirming the entire pipeline works end-to-end.
+**Build 075 breakthrough:** `user.conf` had `rtx.enableReplacementAssets=False`, silently disabling all mod content in builds 016–074. Fixed. A purple test light confirmed the entire pipeline works end-to-end.
 
-> **One step remaining:** The 8 anchor mesh hashes in `mod.usda` are stale — captured under a previous Remix configuration before `positions` was added to the hash rule. All geometry is rendering (3749 draw calls/scene). **Next step:** capture a fresh frame with the Remix Toolkit near the Peru stage, extract the current building mesh hash IDs, and update `mod.usda`.
+**Build 076:** Restored two crash protections accidentally dropped — null-pointer guard at `0x40D2AF` and `PUREDEVICE` stripping. Game now renders 3,733 draw calls/scene with all 31 patches active.
+
+**Build 077:** Fixed a `DrawCache` use-after-free crash triggered by any cold manual launch (without `TR7.arg`). `DrawCache_Record` stored un-referenced COM pointers; menu→level transitions freed the geometry while the cache still held them. Fixed by `AddRef`-ing all cached resources and `Release`-ing on eviction. Game now runs stably from cold menu start for 90+ seconds.
+
+> **One step remaining:** The 8 anchor mesh hashes in `mod.usda` are stale — captured before `positions` was added to the hash rule. All geometry is rendering (2,468+ draw calls/scene). **Next step:** capture a fresh frame with the Remix Toolkit near the Peru stage, extract the current building mesh hash IDs, and update `mod.usda`.
 
 Full status and decision tree: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
 

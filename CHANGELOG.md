@@ -6,6 +6,44 @@ Full build history: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
 
 ---
 
+## [2026-04-13] BUILDS-076-077 — Crash protections restored, cold launch stable
+
+### Objective
+Restore accidentally dropped crash protections and fix cold launch crash triggered by menu→level transition.
+
+### Findings
+- **Build 076**: Null-crash guard at `0x40D2AF` and PUREDEVICE stripping in `W9_CreateDevice` were accidentally removed in a prior session. Restoring both (plus FourCC format rejection and VS 18 build chain fallback) brings game back to full render health: 3,733 draws/scene, all 31 patches active, replacement (purple) light visible in clean render.
+- **Build 077 — ROOT CAUSE FOUND**: All automated test builds (001–076) used `TR7.arg` to jump directly into Peru, bypassing the main menu. The first manual cold launch (without `TR7.arg`) crashed ~60–70 seconds in. Root cause: `DrawCache_Record()` stored raw, un-referenced COM pointers (vb/ib/decl/tex0). The menu→level transition freed menu geometry while the cache still held dangling pointers. On the next `Present`, `DrawCache_Replay()` passed freed pointers into `SetStreamSource` + `DrawIndexedPrimitive`, crashing the Remix bridge the moment NRC activated for the first raytrace frame.
+- **Fix**: `DrawCache_Record` now `AddRef`s all four resources (vb, ib, decl, tex0); `DrawCache_Clear()` releases all refs; all three `s_drawCacheCount = 0` sites replaced with `DrawCache_Clear()`. Game survives cold launch, 90+ seconds stable.
+
+### Patches Applied (Build 076)
+- Restored `patch_null_crash_40D2AF()` — code-cave trampoline at `0x40D2AC` guards null deref at `0x40D2AF`
+- Restored PUREDEVICE stripping: `behFlags &= ~0x00000010` in `W9_CreateDevice`
+- Restored FourCC format rejection: `D3DERR_NOTAVAILABLE` for `cf > 0xFF` in `W9_CheckDeviceFormat`
+- Added VS 18 (`Microsoft Visual Studio\18\Community`) to `build.bat` VSDIR detection chain
+
+### Patches Applied (Build 077)
+- `DrawCache_Record`: `com_addref(c->vb)`, `com_addref(c->decl)`, `com_addref(c->tex0)`; removed immediate `Release` after `GetIndices` (kept that AddRef as cache ref)
+- New `DrawCache_ReleaseEntry()`: releases com refs, marks slot inactive
+- New `DrawCache_Clear()`: iterates all active entries, calls `DrawCache_ReleaseEntry`, zeros count
+- `DrawCache_Replay()`: stale eviction now calls `DrawCache_ReleaseEntry` instead of `c->active = 0`
+- `WD_Release`, `WD_Reset`, transition flush: all three `s_drawCacheCount = 0` → `DrawCache_Clear()`
+
+### Test Results
+- Build 076: FAIL-lights-missing — 3,733 draws/scene, crash-free, replacement light visible, stage lights absent (stale hashes)
+- Build 077: FIXED — game runs 90+ seconds from cold menu start, 2,468 draws/scene, no crash
+
+### Open Questions Updated
+- [x] Can the game launch stably without TR7.arg? → **YES** (build 077)
+- [x] Did build 076 restore full rendering after the dropped crash guards? → **YES** (3,733 draws/scene, all patches active)
+
+### Next Steps
+1. **HIGHEST**: Fresh Remix capture near Peru stage → extract building mesh hashes → update `mod.usda`
+2. **HIGH**: Re-test with updated hashes — expect red+green lights to appear
+3. **FALLBACK**: Anchor lights to Lara's body mesh (always visible since build 071b) as a guaranteed-visible reference
+
+---
+
 ## [2026-04-09] BUILDS-074-075 — Deferred patches, user.conf breakthrough, replacement assets confirmed
 
 ### Objective

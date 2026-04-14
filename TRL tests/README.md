@@ -10,7 +10,7 @@ This directory contains every test build from the project, committed in order. E
 
 ## Current Status
 
-**Failing — stale anchor mesh hashes in mod.usda.** All 31 culling layers are patched and confirmed active. The replacement asset pipeline is fully operational (build 075 confirmed with a stable purple test light). Stage lights are absent only because the building mesh hash IDs in `mod.usda` were captured under a previous Remix configuration and no longer match the current draw calls. A fresh Remix capture near the stage will resolve this.
+**Failing — stale anchor mesh hashes in mod.usda.** All 31 culling layers are patched and confirmed active. The replacement asset pipeline is fully operational (build 075). The cold launch crash is fixed (build 077). Stage lights are absent only because the building mesh hash IDs in `mod.usda` were captured under a previous Remix configuration and no longer match the current draw calls. A fresh Remix capture near the stage will resolve this.
 
 | Goal | Status |
 |------|--------|
@@ -25,10 +25,12 @@ This directory contains every test build from the project, committed in order. E
 | FLOAT3 character draws (Lara visible) | Done |
 | RenderQueue_FrustumCull (Layer 31) bypassed | Done |
 | Replacement asset pipeline (mod lights) | **Done** (build 075) |
+| Crash protections restored | **Done** (build 076) |
+| Cold launch stable (DrawCache use-after-free fixed) | **Done** (build 077) |
 | **Both stage lights stable at all positions** | **Failing — stale hashes** |
 
 **No full PASS yet** — `build-019` appeared to pass but was later confirmed a false positive (wrong screenshots evaluated; see build 020).  
-Latest build: `build-075` — **replacement asset pipeline confirmed working end-to-end** (purple test light visible and stable). Stage lights absent only because anchor mesh hashes in `mod.usda` are stale and need a fresh Remix capture.
+Latest build: `build-077` — **cold launch crash fixed** (DrawCache use-after-free). Stage lights absent only because anchor mesh hashes in `mod.usda` are stale and need a fresh Remix capture.
 
 ---
 
@@ -138,6 +140,15 @@ Latest build: `build-075` — **replacement asset pipeline confirmed working end
 |-------|--------|-------------|
 | [074](build-074-deferred-patches-FAIL-lights-missing) | FAIL | Deferred patch init (fixes menu crash); permanent page unlock; 3749 draws/scene; all 31 patches active; no lights |
 | [075](build-075-replacement-assets-fix-FAIL-stale-hashes) | FAIL | **BREAKTHROUGH**: fixed `user.conf` `enableReplacementAssets=False` — pipeline confirmed working (purple light visible, stable, shifts with camera). Stage light hashes stale; white dots were denoiser artifacts. |
+
+---
+
+### Phase 8 — Crash Fixes + Cold Launch Stability (Builds 076–077)
+
+| Build | Result | Key Finding |
+|-------|--------|-------------|
+| [076](build-076-crash-fixed-FAIL-lights-missing) | FAIL | Restored null-crash guard (`0x40D2AF`) and PUREDEVICE stripping — game renders 3,733 draws/scene crash-free; replacement (purple) light visible in clean render |
+| [077](build-077-drawcache-useafterfree-fix) | FIXED | DrawCache use-after-free crash fixed — `AddRef` all cached VB/IB/decl/tex0 resources; `Release` on eviction. Game now survives menu→level transition from cold start. 2,468 draws/scene, no crash for 90+ seconds. |
 
 \* False positive — Lara didn't move or wrong screenshots evaluated.
 

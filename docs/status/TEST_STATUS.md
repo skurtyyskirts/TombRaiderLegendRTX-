@@ -1,8 +1,8 @@
 # TRL RTX Remix — Test Status Report
 
-**Last reviewed:** 2026-04-13
-**Builds reviewed:** 001, 002, 016–033, 035–042, 044–047, 064–075 (003–015, 034, 043, 048–063 not preserved)
-**Overall status:** FAILING — stale anchor hashes in mod.usda. Replacement asset pipeline confirmed working (build 075). All 31 culling layers patched. Fresh Remix capture needed to get current building mesh hash IDs.
+**Last reviewed:** 2026-04-14
+**Builds reviewed:** 001, 002, 016–033, 035–042, 044–047, 064–077 (003–015, 034, 043, 048–063 not preserved)
+**Overall status:** FAILING — stale anchor hashes in mod.usda. Replacement asset pipeline confirmed working (build 075). Cold launch stable (build 077). All 31 culling layers patched. Fresh Remix capture needed to get current building mesh hash IDs.
 
 ---
 
@@ -125,6 +125,8 @@
 | 073 | FAIL | `rtx.useVertexCapture = True` | ~3651 draws; white dots visible in screenshots — possible overexposed stage lights |
 | 074 | FAIL | Deferred patches + permanent page unlock | 3749 draws/scene; all 31 patches active; menu crash fixed; no lights |
 | 075 | FAIL | Fix `user.conf` enableReplacementAssets; purple reference light test | **Breakthrough**: purple test light visible + stable (pipeline confirmed). Stage light hashes stale. White dots were denoiser artifacts. |
+| 076 | FAIL | Restore null-crash guard (`0x40D2AF`) + PUREDEVICE stripping + FourCC rejection | Crash protections restored; 3,733 draws/scene; replacement (purple) light visible in clean render; stage lights absent |
+| 077 | FIXED | DrawCache use-after-free fix — AddRef vb/ib/decl/tex0 in Record; Clear on Release/Reset/transition | **Cold launch crash fixed.** 2,468 draws/scene; 90+ seconds stable from cold menu start; stage lights still absent (stale hashes) |
 
 *False positive — movement input not reaching game or Lara didn't move.
 
@@ -176,6 +178,9 @@
 - [x] Fixed `user.conf` `enableReplacementAssets=False` override — replacement asset pipeline now enabled (build 075)
 - [x] Confirmed replacement asset pipeline works end-to-end — purple test light visible, stable, camera-shift confirmed (build 075)
 - [x] Confirmed white dots in builds 072-073 were denoiser/NRC artifacts, not anchor lights (build 075 radius test)
+- [x] Restored null-crash guard at `0x40D2AF` and PUREDEVICE stripping in W9_CreateDevice (build 076)
+- [x] Fixed DrawCache use-after-free: AddRef vb/ib/decl/tex0 in DrawCache_Record; DrawCache_Clear on WD_Release/WD_Reset/transition flush (build 077)
+- [x] Confirmed cold launch stable — game survives menu→level transition without TR7.arg (build 077)
 
 ---
 
@@ -183,7 +188,9 @@
 
 ### Immediate — Correct the Anchor Hashes
 
-- [ ] **Fresh Remix capture**: launch game with current proxy, load Peru, enable hash debug view (debug view 277), position near stage, and use Remix Toolkit to capture. Extract current mesh hash IDs for the building columns/pillars.
+Now that the game launches stably from cold start (build 077), a fresh Remix capture can be taken at any time.
+
+- [ ] **Fresh Remix capture**: launch game (no TR7.arg needed), load Peru, enable hash debug view (debug view 277), position Lara near the stage, and use Remix Toolkit to capture. Extract current mesh hash IDs for the building columns/pillars.
 - [ ] **Update mod.usda**: replace the 8 stale hash entries with hash IDs from the fresh capture
 - [ ] **Re-test**: both red and green lights should appear once hashes match
 
