@@ -1695,6 +1695,29 @@ static CachedDraw s_drawCache[DRAW_CACHE_MAX];
 static int s_drawCacheCount = 0;
 static int s_cacheLogOnce = 0;
 
+/* Release COM resources held by a single cache entry and mark it inactive. */
+static void DrawCache_ReleaseEntry(CachedDraw *c) {
+    if (!c->active) return;
+    com_release(c->vb);
+    com_release(c->ib);
+    com_release(c->decl);
+    com_release(c->tex0);
+    c->vb   = NULL;
+    c->ib   = NULL;
+    c->decl = NULL;
+    c->tex0 = NULL;
+    c->active = 0;
+}
+
+/* Release all cached resources and empty the cache. */
+static void DrawCache_Clear(void) {
+    int i;
+    for (i = 0; i < s_drawCacheCount; i++)
+        DrawCache_ReleaseEntry(&s_drawCache[i]);
+    s_drawCacheCount = 0;
+    s_cacheLogOnce   = 0;
+}
+
 static void DrawCache_Record(WrappedDevice *self, unsigned int pt, int bvi,
     unsigned int mi, unsigned int nv, unsigned int si, unsigned int pc)
 {
@@ -1702,15 +1725,10 @@ static void DrawCache_Record(WrappedDevice *self, unsigned int pt, int bvi,
     void *ib = NULL;
     int i, slot = -1;
 
-    /* Get current index buffer */
+    /* Get current index buffer — GetIndices AddRefs; keep that ref as our cache ref */
     {
         typedef int (__stdcall *FN_GetIndices)(void*, void**);
         ((FN_GetIndices)RealVtbl(self)[SLOT_GetIndices])(self->pReal, &ib);
-        if (ib) {
-            /* GetIndices AddRefs, release the extra ref */
-            typedef unsigned long (__stdcall *FN_Rel)(void*);
-            ((FN_Rel)(*(void***)ib)[2])(ib);
-        }
     }
 
     /* Find existing entry or free slot */
@@ -1728,21 +1746,29 @@ static void DrawCache_Record(WrappedDevice *self, unsigned int pt, int bvi,
     if (slot < 0 && s_drawCacheCount < DRAW_CACHE_MAX) {
         slot = s_drawCacheCount++;
     }
-    if (slot < 0) return; /* cache full */
+    if (slot < 0) {
+        /* Cache full — ib was AddRef'd by GetIndices, must release */
+        com_release(ib);
+        return;
+    }
 
     {
         CachedDraw *c = &s_drawCache[slot];
         float wvp_row[16];
-        c->vb = vb;
-        c->ib = ib;
+
+        /* Release previously held resources before overwriting the slot */
+        if (c->active) DrawCache_ReleaseEntry(c);
+
+        c->vb = vb;   com_addref(c->vb);
+        c->ib = ib;   /* already AddRef'd by GetIndices above */
         c->si = si;
         c->pc = pc;
         c->nv = nv;
         c->pt = pt;
         c->bvi = bvi;
         c->mi = mi;
-        c->decl = self->lastDecl;
-        c->tex0 = self->curTexture[self->albedoStage];
+        c->decl = self->lastDecl; com_addref(c->decl);
+        c->tex0 = self->curTexture[self->albedoStage]; com_addref(c->tex0);
         c->streamOff = self->streamOffset[0];
         c->streamStr = self->streamStride[0];
         c->isShort4 = (self->curDeclPosType == D3DDECLTYPE_SHORT4) ? 1 : 0;
@@ -1790,7 +1816,7 @@ static void DrawCache_Replay(WrappedDevice *self) {
         if (!c->active) continue;
         if (c->lastSeenFrame == self->frameCount) continue; /* seen this frame, skip */
         if (self->frameCount - c->lastSeenFrame > 120) {
-            c->active = 0; /* stale, evict */
+            DrawCache_ReleaseEntry(c); /* stale — release COM refs and mark inactive */
             continue;
         }
         /* Skip if resources are gone (VB/IB could be freed) */
@@ -1846,6 +1872,12 @@ static unsigned long __stdcall WD_Release(WrappedDevice *self) {
     if (self->refCount <= 0) {
         log_str("WrappedDevice released\r\n");
         PinnedDraw_ReleaseAll(self);
+        /* Release S4 expanded VBs — owned COM refs, must Release before HeapFree */
+        S4_FlushVBCache(self);
+        /* Clear draw cache — releases COM refs held for anchor mesh replay */
+#if DRAW_CACHE_ENABLED
+        DrawCache_Clear();
+#endif
         shader_release(self->lastVS);
         shader_release(self->lastPS);
         self->lastVS = NULL;
@@ -1998,6 +2030,12 @@ static int __stdcall WD_Reset(WrappedDevice *self, void *pPresentParams) {
 
     /* Pinned draws hold device resources — release before Reset */
     PinnedDraw_ReleaseAll(self);
+    /* Release S4 expanded VBs — they hold D3DPOOL_MANAGED resources invalidated by Reset */
+    S4_FlushVBCache(self);
+    /* Clear draw cache — releases COM refs before Reset invalidates device resources */
+#if DRAW_CACHE_ENABLED
+    DrawCache_Clear();
+#endif
     self->pinnedCaptureComplete = 0;
 
     shader_release(self->lastVS);
@@ -2141,6 +2179,12 @@ static int __stdcall WD_BeginScene(WrappedDevice *self) {
      * so patches that NOP scene graph traversal won't crash it. */
     if (self->viewProjValid && !self->memoryPatchesApplied) {
         TRL_ApplyMemoryPatches(self);
+        /* Flush draws cached during loading screens — they carry wrong world matrices
+         * for the gameplay scene. Also releases their COM refs so freed menu resources
+         * aren't replayed after the transition. */
+#if DRAW_CACHE_ENABLED
+        DrawCache_Clear();
+#endif
     }
 
     /* Re-stamp game globals every scene, but only after patches are applied
@@ -3437,22 +3481,14 @@ static void TRL_ApplyMemoryPatches(WrappedDevice *self) {
             p[0]=0x90; p[1]=0x90; p[2]=0x90; p[3]=0x90;
             VirtualProtect(p, 4, oldProtect, &oldProtect); noped++;
         }
-        /* 0x46D202: 89 68 06 — mov [eax+6], ebp (3 bytes) */
-        p = (unsigned char *)0x0046D202;
-        if (VirtualProtect(p, 3, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            p[0]=0x90; p[1]=0x90; p[2]=0x90;
-            VirtualProtect(p, 3, oldProtect, &oldProtect); noped++;
-        }
-        /* 0x46D205: 89 68 0A — mov [eax+0xA], ebp (3 bytes) */
-        p = (unsigned char *)0x0046D205;
-        if (VirtualProtect(p, 3, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            p[0]=0x90; p[1]=0x90; p[2]=0x90;
-            VirtualProtect(p, 3, oldProtect, &oldProtect); noped++;
-        }
+        /* 0x46D202 and 0x46D205: flags/flags2 clear — NOT patched.
+         * These zero the sector portal-visible flags each frame. Without
+         * them, stale flags from a previous chapter persist and cause the
+         * portal walk to dereference freed sector data on chapter reload. */
 
         log_str("  NOPed SectorPortalVisibility reset writes: ");
         log_int("", noped);
-        log_str("/6 (bounds persist across frames)\r\n");
+        log_str("/4 (bounds NOPed, flags clear preserved)\r\n");
     }
 
     /* Stamp cull mode globals to D3DCULL_NONE. The renderer caches these and
