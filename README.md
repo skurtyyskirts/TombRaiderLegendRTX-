@@ -9,7 +9,23 @@
 
 A reverse engineering project to run Tomb Raider: Legend (2006) under NVIDIA RTX Remix — full path-traced lighting, stable geometry hashes, and complete scene visibility via a custom D3D9 FFP proxy DLL.
 
-**77 builds · All 31 culling layers patched · Cold launch stable (build 077) · Nightly screening gates automated · Stage-light end-to-end run remains the authoritative release gate**
+> **Build 077 — Cold launch stable.** The replacement asset pipeline is confirmed end-to-end (build 075 purple test light). All 31 culling layers patched. DrawCache use-after-free crash fixed. One step remains: fresh mesh hash capture to update `mod.usda` and unlock the stage lights.
+
+---
+
+## Contents
+
+- [Background](#background)
+- [DLL Chain](#dll-chain)
+- [Screenshots](#screenshots)
+- [Project Status](#project-status)
+- [How the Proxy Works](#how-the-proxy-works)
+- [Quick Start](#quick-start)
+- [Repository Layout](#repository-layout)
+- [Test Build Archive](#test-build-archive)
+- [Documentation](#documentation)
+- [Developer Workflow](#developer-workflow)
+- [Contributing](#contributing)
 
 ---
 
@@ -58,7 +74,7 @@ NvRemixLauncher32.exe
 |---|---|
 | ![Hash debug](TRL%20tests/build-075-replacement-assets-fix-FAIL-stale-hashes/screenshots/phase1-hash-center.png) | ![Clean RTX render with purple test light](TRL%20tests/build-075-replacement-assets-fix-FAIL-stale-hashes/screenshots/phase2-clean-center-purple-light.png) |
 
-*Build 075 confirmed the full pipeline end-to-end: a purple replacement light anchored to `mesh_574EDF0EAD7FC51D` appeared immediately, held stable across all 3 camera positions, and shifted correctly with camera movement.*
+*Build 075 confirmed the full pipeline end-to-end: a purple replacement light anchored to `mesh_574EDF0EAD7FC51D` appeared immediately, held stable across all 3 camera positions, and shifted correctly with camera movement. Stage lights are absent only because the 8 anchor mesh hashes in `mod.usda` were captured under an older Remix configuration.*
 
 ---
 
@@ -79,17 +95,15 @@ NvRemixLauncher32.exe
 | Cold launch stable — DrawCache use-after-free fixed | ✅ Done | 077 |
 | **Both stage lights stable at all positions** | 🔄 In progress — fresh hash capture needed | — |
 
-### Current State — Build 077
+### One Remaining Step
 
-**Build 075 breakthrough:** `user.conf` had `rtx.enableReplacementAssets=False`, silently disabling all mod content in builds 016–074. Fixed. A purple test light confirmed the entire pipeline works end-to-end.
+Everything works. The geometry submits (2,400–3,700 draw calls/scene). The replacement asset pipeline is proven. The crash that prevented cold launches is fixed. The only thing standing between the current state and visible stage lights is **fresh mesh hashes**.
 
-**Build 076:** Restored two crash protections accidentally dropped — null-pointer guard at `0x40D2AF` and `PUREDEVICE` stripping. Game now renders 3,733 draw calls/scene with all 31 patches active.
+`mod.usda` contains 8 anchor mesh hash IDs that were captured under an older Remix configuration (before `positions` was added to the hash rule and before the SHORT4→FLOAT3 expansion). No currently-rendered mesh matches those IDs. A single Remix capture near the Peru stage will produce the correct hashes.
 
-**Build 077:** Fixed a `DrawCache` use-after-free crash triggered by any cold manual launch (without `TR7.arg`). `DrawCache_Record` stored un-referenced COM pointers; menu→level transitions freed the geometry while the cache still held them. Fixed by `AddRef`-ing all cached resources and `Release`-ing on eviction. Game now runs stably from cold menu start for 90+ seconds.
+**NEXT STEP:** Launch the game, position Lara near the stage, open the Remix Toolkit hash debug view (debug view 277), capture the frame, extract the building mesh hash IDs, update `mod.usda`, re-test.
 
-> **Release policy:** nightly automation is a screening/regression gate only. Final promotion still requires the full stage-light run to show both reference lights in all 3 clean screenshots, motion across positions, stable hashes, and no crash.
-
-> **Stage-light status:** the original replacement-asset proof from build 075 still stands, but the current stage-anchor hashes need a fresh live capture before a candidate can be promoted.
+> **Note:** `user.conf` in the game directory overrides `rtx.conf`. The Remix developer menu regenerates this file and resets `rtx.enableReplacementAssets` to `False`. Always verify it is `True` before testing mod content.
 
 Full status and decision tree: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
 
@@ -165,13 +179,13 @@ python -m autopatch
 
 **Pass criteria:** Both red and green stage lights visible in all 3 clean render screenshots, lights shift position as Lara strafes, hashes stable, no crash.
 
-**Local pytest rule:** always use a fresh temp directory outside the repo and outside `.git`.
+**Local pytest:**
 
 ```powershell
 python -m pytest tests tests_trl -v --tb=short --basetemp "$env:TEMP\\trl-pytest-$(Get-Date -Format yyyyMMdd-HHmmss)"
 ```
 
-> **Important:** `user.conf` in the game directory overrides `rtx.conf`. Always verify `rtx.enableReplacementAssets=True` is set before testing mod content — the Remix developer menu regenerates this file and resets it to `False`.
+Always use a fresh temp directory outside the repo and outside `.git`.
 
 ---
 
@@ -186,7 +200,7 @@ python -m pytest tests tests_trl -v --tb=short --basetemp "$env:TEMP\\trl-pytest
 | [`graphics/directx/dx9/tracer/`](graphics/directx/dx9/tracer/) | Full-frame D3D9 API capture — all 119 methods, with offline analysis |
 | [`autopatch/`](autopatch/) | Autonomous hypothesis-test-patch loop |
 | [`automation/`](automation/) | Screenshot automation and test replay infrastructure |
-| [`docs/`](docs/) | Full documentation — research, reference, guides |
+| [`docs/`](docs/) | Full documentation — research, reference, guides, live status |
 | [`TRL tests/`](TRL%20tests/) | Test build archive — every build with `SUMMARY.md`, screenshots, proxy log, source |
 | [`TRL traces/`](TRL%20traces/) | Full-frame D3D9 API captures for offline analysis |
 
