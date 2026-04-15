@@ -1,6 +1,6 @@
 # TRL RTX Remix — Test Status Report
 
-**Last reviewed:** 2026-04-14
+**Last reviewed:** 2026-04-15
 **Builds reviewed:** 001, 002, 016–033, 035–042, 044–047, 064–077 (003–015, 034, 043, 048–063 not preserved)
 **Overall status:** FAILING — stale anchor hashes in mod.usda. Replacement asset pipeline confirmed working (build 075). Cold launch stable (build 077). All 31 culling layers patched. Fresh Remix capture needed to get current building mesh hash IDs.
 
@@ -14,15 +14,19 @@
 
 2. **Proxy transform pipeline:** View/Proj matrices read from game memory (`0x010FC780`, `0x01002530`), World computed via WVP decomposition. 100% of draws processed (`passthrough=0`, `xformBlocked=0`, `vpValid=1`) in all recent builds.
 
-3. **Geometry culling exhausted (22 layers mapped, 19+ patched):**
+3. **Geometry culling exhausted (36 layers mapped, 32 confirmed patched, 2 irrelevant, 2 unexplored):**
    - Frustum threshold stamped to -1e30 per BeginScene (`0xEFDD64`)
-   - Per-object frustum function RETed at `0x407150`
+   - Per-object frustum function disabled at `0x407150` (11 internal NOP jumps)
    - 11 scene traversal cull branches NOPed inside `0x407150`
    - Backface culling forced to `D3DCULL_NONE`
    - Cull mode globals stamped (`0xF2A0D4/D8/DC`)
    - Sector/portal visibility gates NOPed (`0x46C194`, `0x46C19D`) — 65× draw count increase
    - Camera-sector proximity filter NOPed (`0x46B85A` in `RenderSector`)
    - Far clip distance stamped to 1e30f per BeginScene (`0x10FC910`)
+   - Post-sector loop, mesh eviction, stream unload, MeshSubmit gate, frustum screen-size rejection, sector submit gates, portal visibility resets, level writers — all NOPed (builds 045–063)
+   - RenderQueue_FrustumCull (0x40C430) bypassed via JMP to uncull path (build 072)
+   - Scene traversal null-crash guard at 0x40D2AC (build 076)
+   - Full map: [`docs/status/WHITEBOARD.md`](WHITEBOARD.md)
 
 4. **Per-light culling gates exhausted:**
    - Light frustum 6-plane test NOPed (`0x60CE20`)

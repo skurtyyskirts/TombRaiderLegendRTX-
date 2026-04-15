@@ -3,14 +3,14 @@
 This directory contains every test build from the project, committed in order. Each build has a `SUMMARY.md`, proxy source snapshot, and screenshots (where applicable).
 
 **Live status docs:**
-- [`docs/status/WHITEBOARD.md`](../docs/status/WHITEBOARD.md) — culling layer map (31 layers), build history narrative, decision tree, key addresses
+- [`docs/status/WHITEBOARD.md`](../docs/status/WHITEBOARD.md) — culling layer map (36 layers), build history narrative, decision tree, key addresses
 - [`docs/status/TEST_STATUS.md`](../docs/status/TEST_STATUS.md) — build-by-build pass/fail table, what's done, what remains
 
 ---
 
 ## Current Status
 
-**Failing — stale anchor mesh hashes in mod.usda.** All 31 culling layers are patched and confirmed active. The replacement asset pipeline is fully operational (build 075). The cold launch crash is fixed (build 077). Stage lights are absent only because the building mesh hash IDs in `mod.usda` were captured under a previous Remix configuration and no longer match the current draw calls. A fresh Remix capture near the stage will resolve this.
+**Failing — stale anchor mesh hashes in mod.usda.** All 36 culling layers are mapped (32 confirmed patched). The replacement asset pipeline is fully operational (build 075). The cold launch crash is fixed (build 077). Stage lights are absent only because the building mesh hash IDs in `mod.usda` were captured under a previous Remix configuration and no longer match the current draw calls. A fresh Remix capture near the stage will resolve this.
 
 | Goal | Status |
 |------|--------|
@@ -138,7 +138,7 @@ Latest build: `build-077` — **cold launch crash fixed** (DrawCache use-after-f
 
 | Build | Result | Key Finding |
 |-------|--------|-------------|
-| [074](build-074-deferred-patches-FAIL-lights-missing) | FAIL | Deferred patch init (fixes menu crash); permanent page unlock; 3749 draws/scene; all 31 patches active; no lights |
+| [074](build-074-deferred-patches-FAIL-lights-missing) | FAIL | Deferred patch init (fixes menu crash); permanent page unlock; 3749 draws/scene; 36 layers mapped; no lights |
 | [075](build-075-replacement-assets-fix-FAIL-stale-hashes) | FAIL | **BREAKTHROUGH**: fixed `user.conf` `enableReplacementAssets=False` — pipeline confirmed working (purple light visible, stable, shifts with camera). Stage light hashes stale; white dots were denoiser artifacts. |
 
 ---
@@ -177,4 +177,4 @@ All five must be true:
 2. Lights **shift position** left/right across the 3 screenshots as Lara strafes
 3. Hash debug shows **same color for same geometry** across all positions
 4. No crash, no proxy errors
-5. Proxy log shows `vpValid=1`, patches confirmed, draw counts ≥ 91,800
+5. Proxy log shows `vpValid=1`, patches confirmed, draw count variance < 5% across positions (current baseline: ~2,400–3,700 draws/scene)

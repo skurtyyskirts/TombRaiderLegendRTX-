@@ -44,7 +44,7 @@ A custom `d3d9.dll` proxy that sits between TRL and Remix:
 1. Intercepts every `DrawIndexedPrimitive` call
 2. Reads TRL's vertex shader constants to reconstruct the W/V/P matrices
 3. Calls `SetTransform` so Remix sees the draw as a native FFP call
-4. Patches **31 culling layers** at runtime so all geometry is submitted regardless of camera position
+4. Patches **36 culling layers** at runtime so all geometry is submitted regardless of camera position
 
 ---
 
@@ -86,7 +86,7 @@ NvRemixLauncher32.exe
 | Transform pipeline (View / Proj / World) | ✅ Done | 001 |
 | Asset hash stability (static + moving camera) | ✅ Done | 028 |
 | Automated two-phase test pipeline | ✅ Done | 018 |
-| All 31 culling layers patched | ✅ Done | 072 |
+| All 36 culling layers mapped (32 confirmed patched) | ✅ Done | 076 |
 | SHORT4 → FLOAT3 vertex buffer expansion | ✅ Done | 045 |
 | Content fingerprint VB cache | ✅ Done | 046 |
 | Character draws — Lara visible in RTX | ✅ Done | 071b |
@@ -154,7 +154,7 @@ c48+        Skinning bone matrices (3 registers / bone)
 | Mesh eviction (3 sites) | NOP | `SectorEviction` × 2 + `ObjectTracker_Evict` |
 | `0x40C430` | JMP → `0x40C390` | Redirects BVH frustum culler to no-cull path (Layer 31, build 072) |
 
-Full 31-layer culling map: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
+Full 36-layer culling map: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
 
 ---
 

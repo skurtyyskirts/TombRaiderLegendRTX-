@@ -5,7 +5,7 @@
 - **Project:** Vibe Reverse Engineering toolkit — D3D9 FFP proxy DLL + RE tools for RTX Remix compatibility
 - **Repo:** github.com/skurtyyskirts/TombRaiderLegendRTX-
 - **Owner:** Jeffrey (skurtyyskirts), Temple TX
-- **Builds completed:** 001–075, 071b (003–015, 034, 043, 048–063 not preserved)
+- **Builds completed:** 001–077, 071b (003–015, 034, 043, 048–063 not preserved)
 
 ## DLL Chain
 ```
@@ -13,7 +13,7 @@ NvRemixLauncher32.exe → trl.exe → dxwrapper.dll → d3d9.dll (FFP proxy) →
 ```
 
 ## Architecture Summary
-TRL renders exclusively through programmable vertex shaders. RTX Remix requires Fixed-Function Pipeline (FFP). The proxy intercepts D3D9 calls, reconstructs W/V/P matrices from VS constants, and feeds them to Remix through FFP calls — so Remix sees TRL as a native FFP game. The proxy also patches 31 identified culling layers at runtime via `VirtualProtect` + memory write. FLOAT3 character draws (Lara's model) are now correctly processed through FFP as of build 071b.
+TRL renders exclusively through programmable vertex shaders. RTX Remix requires Fixed-Function Pipeline (FFP). The proxy intercepts D3D9 calls, reconstructs W/V/P matrices from VS constants, and feeds them to Remix through FFP calls — so Remix sees TRL as a native FFP game. The proxy also maps 36 culling layers at runtime via `VirtualProtect` + memory write (32 confirmed patched, 2 irrelevant to Remix, 2 unexplored). FLOAT3 character draws (Lara's model) are now correctly processed through FFP as of build 071b.
 
 ### VS Constant Register Layout (TRL-specific)
 ```
@@ -69,12 +69,14 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 - FFP proxy DLL builds and chains to Remix
 - Transform pipeline (View/Proj/World from VS constants)
 - Automated test pipeline (two-phase: hash debug + clean render, camera pan)
-- All 31 identified culling layers patched (all 3 light pipeline gates re-enabled crash-free, build 068; Layer 31 bypass via JMP 0x40C430→0x40C390, build 072)
+- All 36 culling layers mapped — 32 confirmed patched (light pipeline gates re-enabled build 068; RenderQueue_FrustumCull bypass build 072; scene traversal null guard build 076)
 - SHORT4→FLOAT3 VB expansion with content fingerprint cache
 - ProcessPendingRemovals crash fix at 0xEE88AD
 - FLOAT3 draw path fixed — null VS before FLOAT3 draws; Lara now visible (build 071b)
 - Replacement asset pipeline confirmed working end-to-end (build 075) — purple test light visible and stable
 - `user.conf` `enableReplacementAssets=False` override identified and fixed (was silently disabling all mod content builds 016–074)
+- Crash protections restored (null-crash guard at 0x40D2AC + PUREDEVICE stripping) — build 076
+- Cold launch stable — DrawCache use-after-free fixed, AddRef'd all cached resources — build 077
 
 ### ONE REMAINING BLOCKER
 
@@ -88,7 +90,7 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 
 **PASS criteria:** Both red and green stage lights visible in all 3 clean render screenshots, lights shift as Lara strafes, hashes stable, no crash.
 
-## 31-Layer Culling Map
+## 36-Layer Culling Map
 
 | # | Layer | Address(es) | Patched? | Build |
 |---|-------|------------|----------|-------|
@@ -121,8 +123,13 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 | 27 | Post-sector bitmask/distance culls | 0x40E30F, 0x40E3B0 | Yes — NOPed | 045–063 |
 | 28 | Stream unload gate | 0x415C51 | Yes — NOPed | 045–063 |
 | 29 | Mesh eviction | SectorEviction (×2) + ObjectTracker_Evict | Yes — all 3 NOPed | 045–063 |
-| 30 | Render queue frustum culler | 0x40C430 (RenderQueue_FrustumCull) | Yes — JMP to 0x40C390 (uncull path); +29% draws | 072 |
-| 31 | LOD alpha fade | 0x446580 | **UNEXPLORED** | — |
+| 30 | Post-sector loop | 0xF12016 (enable flag), 0x10024E8 (gate) | Yes — enabled | 045–063 |
+| 31 | Render queue frustum culler | 0x40C430 (RenderQueue_FrustumCull) | Yes — JMP to 0x40C390 (uncull path); +29% draws | 072 |
+| 32 | Frustum screen-size rejection | 0x46C242, 0x46C25B | Yes — NOPed | 045–063 |
+| 33 | SectorPortalVisibility resets | 4 write sites | Yes — all 4 NOPed | 045–063 |
+| 34 | Sector_SubmitObject gates | 0x40C666, 0x40C68B | Yes — NOPed | 045–063 |
+| 35 | Level writers | 0x46CCB4, 0x4E6DFA | Yes — NOPed | 045–063 |
+| 36 | Null crash guard (scene traversal) | 0x40D2AC | Yes — trampoline patched | 076 |
 
 ## Known Dead Ends — DO NOT RETRY
 
@@ -168,7 +175,7 @@ rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
 | `automation/` | Screenshot automation and test replay infrastructure |
 | `patches/TombRaiderLegend/` | Runtime patches applied by proxy |
 | `docs/` | Full documentation — research, reference, guides |
-| `docs/status/WHITEBOARD.md` | **Live status** — 31-layer culling map, build history, decision tree |
+| `docs/status/WHITEBOARD.md` | **Live status** — 36-layer culling map, build history, decision tree |
 | `docs/status/TEST_STATUS.md` | Build-by-build pass/fail results |
 | `TRL tests/` | Test build archive — every build with SUMMARY.md, screenshots, proxy log, source |
 | `TRL traces/` | Full-frame D3D9 API captures |
