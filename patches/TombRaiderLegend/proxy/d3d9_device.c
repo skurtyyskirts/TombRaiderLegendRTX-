@@ -194,6 +194,10 @@ extern void log_floats_dec(const char *prefix, float *data, unsigned int count);
 
 /* VP inverse cache: only recompute when camera moves more than this */
 #define VP_CHANGE_THRESHOLD     1e-4f
+/* H4 jitter lock: observed per-frame View/Proj drift is ~0.001..0.009 on a
+ * static camera. This threshold is well above the jitter but well below the
+ * delta produced by actual camera motion (> 0.05 per strafe/turn). */
+#define H4_VP_LOCK_THRESHOLD    1.5e-2f
 /* World matrix quantization grid */
 #define WORLD_QUANT_GRID        1e-3f
 /* Screen-space quad detection: WVP vs Proj tolerance */
@@ -727,6 +731,13 @@ typedef struct WrappedDevice {
     float savedWorld[16];
     float savedView[16];
     float savedProj[16];
+
+    /* H4 jitter lock — freezes View/Proj when live values are within
+     * H4_VP_LOCK_THRESHOLD of the locked snapshot. Absorbs TRL's per-frame
+     * sub-pixel camera jitter so Remix's generation hash stays stable. */
+    float vpLockView[16];
+    float vpLockProj[16];
+    int   vpLockValid;
 
     /* SHORT4 → FLOAT3 position expansion (CPU-side FFP conversion).
      * Eliminates useVertexCapture dependency for hash stability. */
@@ -2153,6 +2164,23 @@ static void TRL_ApplyTransformOverrides(WrappedDevice *self) {
         proj[i] = gameProj[i];
     }
 
+    /* H4 fix: lock View/Proj across frames to absorb sub-pixel camera jitter.
+     * TRL updates the raw View/Proj matrices in game memory every frame with
+     * small (~0.001..0.009) deltas even when the player is idle. Without the
+     * lock, Remix sees a different W*V*P composite every frame and re-hashes
+     * geometry under rtx.geometryGenerationHashRuleString, producing per-frame
+     * position jitter (earthquake) and unwelded-looking triangle seams. */
+    if (self->vpLockValid &&
+        !mat4_changed(view, self->vpLockView, H4_VP_LOCK_THRESHOLD) &&
+        !mat4_changed(proj, self->vpLockProj, H4_VP_LOCK_THRESHOLD)) {
+        memcpy(view, self->vpLockView, 64);
+        memcpy(proj, self->vpLockProj, 64);
+    } else {
+        memcpy(self->vpLockView, view, 64);
+        memcpy(self->vpLockProj, proj, 64);
+        self->vpLockValid = 1;
+    }
+
     /* Cache the first valid 3D projection for quad detection.
      * The game overwrites the Proj address for UI/overlay passes, so the
      * quad filter must compare against the original 3D projection, not the
@@ -3143,6 +3171,7 @@ static int __stdcall WD_Reset(WrappedDevice *self, void *pPresentParams) {
     self->lastVS = NULL;
     self->lastPS = NULL;
     self->viewProjValid = 0;
+    self->vpLockValid = 0;
     self->ffpSetup = 0;
     self->worldDirty = 0;
     self->viewProjDirty = 0;
@@ -5126,6 +5155,7 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     w->lastVS = NULL;
     w->lastPS = NULL;
     w->viewProjValid = 0;
+    w->vpLockValid = 0;
     TRL_ResetTexture0AnimationState(w);
     w->lastDecl = NULL;
     w->curDeclIsSkinned = 0;
