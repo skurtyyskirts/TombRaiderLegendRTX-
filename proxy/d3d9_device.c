@@ -194,6 +194,10 @@ extern void log_floats_dec(const char *prefix, float *data, unsigned int count);
 
 /* VP inverse cache: only recompute when camera moves more than this */
 #define VP_CHANGE_THRESHOLD     1e-4f
+/* H4 jitter lock: observed per-frame View/Proj drift is ~0.001..0.009 on a
+ * static camera. This threshold is well above the jitter but well below the
+ * delta produced by actual camera motion (> 0.05 per strafe/turn). */
+#define H4_VP_LOCK_THRESHOLD    1.5e-2f
 /* World matrix quantization grid */
 #define WORLD_QUANT_GRID        1e-3f
 /* Screen-space quad detection: WVP vs Proj tolerance */
@@ -230,14 +234,36 @@ extern void log_floats_dec(const char *prefix, float *data, unsigned int count);
 
 /* Sky isolation: duplicate candidate sky textures with a one-bit mutation so
  * sky tagging in Remix can target sky-only hashes without touching world draws. */
-#define SKY_ISO_MAX 64
+#define SKY_ISO_MAX 256
+#define SKY_ISO_AUTO_MAX_TEXTURES 4
+#define SKY_ISO_AUTO_MIN_SCENES 8
+#define SKY_ISO_AUTO_MIN_SCORE_PCT 35
+#define SKY_ISO_CONTAM_ANIMATED      0x0001u
+#define SKY_ISO_CONTAM_NON_ID_VIEW   0x0002u
+#define SKY_ISO_CONTAM_NON_ID_WORLD  0x0004u
+#define SKY_ISO_CONTAM_SHORT4        0x0008u
+#define SKY_ISO_CONTAM_DEFORMED      0x0010u
+#define SKY_ISO_CONTAM_AUX_STREAM    0x0020u
+#define SKY_ISO_CONTAM_NON_FLOAT3    0x0040u
+#define SKY_ISO_CONTAM_NON_CANDIDATE 0x0080u
 
 typedef struct SkyIsoEntry {
     void *origTex;       /* source stage texture pointer */
     void *isoTex;        /* cloned + bit-mutated texture (owned, Release on reset) */
-    int candidate;       /* marked during warm-up */
+    int candidate;       /* promoted after warm-up screening */
     int cloneAttempted;  /* avoid expensive repeated clone attempts */
     int cloneReady;      /* isoTex is valid */
+    unsigned int candidateDraws;
+    unsigned int candidateScenes;
+    unsigned int candidateLastScene;
+    unsigned int candidateMaxVerts;
+    unsigned int candidateMaxPrims;
+    unsigned int candidateScore;
+    unsigned int contaminatedDraws;
+    unsigned int contaminatedScenes;
+    unsigned int contaminatedLastScene;
+    unsigned int contaminatedScore;
+    unsigned int contaminationFlags;
 } SkyIsoEntry;
 
 typedef struct {
@@ -626,6 +652,7 @@ typedef struct WrappedDevice {
     int curDeclHasPosT;     /* 1 if current decl has POSITIONT (screen-space, skips FFP transform) */
     int curDeclHasMorph;    /* 1 if current decl has POSITION[1] (morph target — Lara blend shapes) */
     int curDeclPosType;     /* D3DDECLTYPE of POSITION element (2=FLOAT3, 6=SHORT4, etc.) */
+    int curDeclUsesAuxStreams; /* 1 if the declaration references stream 1+ */
 
     /* Texcoord format for diagnostics and skinned vertex expansion */
     int curDeclTexcoordType; /* D3DDECLTYPE of TEXCOORD[0], or -1 if none */
@@ -636,6 +663,7 @@ typedef struct WrappedDevice {
     int albedoStage;
     int useVertexCaptureEffective; /* effective rtx.useVertexCapture (user.conf > rtx.conf) */
     int float3RoutingMode;         /* FLOAT3_ROUTE_* */
+    int short4AnimatedRoutingMode; /* FLOAT3_ROUTE_* applied to animated/deformed SHORT4 draws */
 
     /* Sky isolation runtime config/state */
     int skyIsolationEnable;
@@ -673,6 +701,12 @@ typedef struct WrappedDevice {
     unsigned int drawCallCount;
     unsigned int sceneCount;
     unsigned int skySceneCounter;   /* global BeginScene count (not reset per frame) */
+    unsigned int lastSceneDrawsProcessed;
+    unsigned int postLatchSceneLogsRemaining;
+    int sawMenuScene;               /* front-end loop observed */
+    int sawTransitionBlip;          /* tiny handoff scene observed */
+    int levelSceneDetected;         /* first real in-level scene detected */
+    int replayFeaturesEnabled;      /* draw replay/capture path gate */
     int vsConstWriteLog[256];
 
     /* Per-frame draw routing counters (logged at Present without delay) */
@@ -681,7 +715,7 @@ typedef struct WrappedDevice {
     unsigned int drawsPassthrough;  /* viewProjValid=0 or POSITIONT */
     unsigned int drawsTotal;        /* all DIP+DP calls this frame */
     unsigned int transformsBlocked; /* external SetTransform V/P/W blocked */
-    unsigned int drawsS4;           /* SHORT4 draws (VS nulled, FFP) */
+    unsigned int drawsS4;           /* SHORT4 draws (expanded rigid path or shader-routed dynamic path) */
     unsigned int drawsF3;           /* FLOAT3/other draws */
     unsigned int frameSummaryCount; /* how many frame summaries logged */
 
@@ -697,6 +731,13 @@ typedef struct WrappedDevice {
     float savedWorld[16];
     float savedView[16];
     float savedProj[16];
+
+    /* H4 jitter lock — freezes View/Proj when live values are within
+     * H4_VP_LOCK_THRESHOLD of the locked snapshot. Absorbs TRL's per-frame
+     * sub-pixel camera jitter so Remix's generation hash stays stable. */
+    float vpLockView[16];
+    float vpLockProj[16];
+    int   vpLockValid;
 
     /* SHORT4 → FLOAT3 position expansion (CPU-side FFP conversion).
      * Eliminates useVertexCapture dependency for hash stability. */
@@ -738,7 +779,7 @@ static __inline void** RealVtbl(WrappedDevice *self) {
 static void TRL_ApplyFFPDrawState(WrappedDevice *self, int applyTex0Transform);
 static int S4_ExpandAndDraw(WrappedDevice *self,
     void *srcVB, unsigned int srcOff, unsigned int srcStride, void *origDecl, int posOff,
-    unsigned int pt, int bvi, unsigned int nv, unsigned int si, unsigned int pc,
+    unsigned int pt, int bvi, unsigned int mi, unsigned int nv, unsigned int si, unsigned int pc,
     float *world, float *view, float *proj);
 
 static __inline void shader_addref(void *pShader) {
@@ -965,6 +1006,30 @@ static int TRL_GetEffectiveFloat3Route(WrappedDevice *self) {
     return self->useVertexCaptureEffective ? FLOAT3_ROUTE_SHADER : FLOAT3_ROUTE_NULL_VS;
 }
 
+static int TRL_IsAnimatedOrDeformedShort4Draw(WrappedDevice *self, int animatedTex0) {
+    if (self->curDeclPosType != D3DDECLTYPE_SHORT4)
+        return 0;
+    if (animatedTex0)
+        return 1;
+    if (self->curDeclHasMorph)
+        return 1;
+    if (self->curDeclIsSkinned)
+        return 1;
+    if (self->curDeclUsesAuxStreams)
+        return 1;
+    return 0;
+}
+
+static int TRL_ShouldShaderRouteAnimatedShort4Draw(WrappedDevice *self, int animatedTex0) {
+    if (!TRL_IsAnimatedOrDeformedShort4Draw(self, animatedTex0))
+        return 0;
+    if (self->short4AnimatedRoutingMode == FLOAT3_ROUTE_NULL_VS)
+        return 0;
+    if (self->short4AnimatedRoutingMode == FLOAT3_ROUTE_SHADER)
+        return 1;
+    return self->useVertexCaptureEffective ? 1 : 0;
+}
+
 static int TRL_ReadEffectiveUseVertexCapture(void) {
     char userConf[MAX_PATH];
     char rtxConf[MAX_PATH];
@@ -1142,6 +1207,11 @@ static int mat4_approx_equal(const float *a, const float *b, float tol) {
     return 1;
 }
 
+static int TRL_HasGameplayCamera(void) {
+    const float *gameView = (const float *)TRL_VIEW_MATRIX_ADDR;
+    return !mat4_approx_equal(gameView, s_identity4x4, 1e-5f);
+}
+
 /* Returns true if a 4x4 matrix is non-zero and non-identity (worth logging) */
 static int mat4_is_interesting(const float *m) {
     int all_zero = 1, i;
@@ -1222,7 +1292,26 @@ static int TRL_BuildTexture0Transform(WrappedDevice *self, float *outTexMatrix) 
 
 static int TRL_DrawHasAnimatedTexture0(WrappedDevice *self) {
     float texMatrix[16];
-    return TRL_BuildTexture0Transform(self, texMatrix);
+    float c6y, c6z, c6w;
+
+    if (TRL_BuildTexture0Transform(self, texMatrix))
+        return 1;
+
+    /* animatedTex0: detect VS-driven UV scroll via c6.y/z/w.
+     * TRL water never issues SetTransform and keeps stage-0
+     * TEXTURETRANSFORMFLAGS at DISABLE, so the FFP tex0 matrix is
+     * identity for every draw. All water UV motion is instead carried
+     * by vertex shader constant c6 (observed c6.y in ~0.33..0.68 range,
+     * c6.w ~0.0002, c6.x always 0). Match this signature so the draw
+     * is kept on the shader route and UV scroll survives. */
+    c6y = self->vsConst[6 * 4 + 1];
+    c6z = self->vsConst[6 * 4 + 2];
+    c6w = self->vsConst[6 * 4 + 3];
+    if (c6y != 0.0f || c6z != 0.0f)
+        return 1;
+    if (c6w > 1e-4f || c6w < -1e-4f)
+        return 1;
+    return 0;
 }
 
 static int SkyIso_IsCompressedFormat(unsigned int fmt) {
@@ -1260,6 +1349,17 @@ static void SkyIso_Clear(WrappedDevice *self) {
         entry->candidate = 0;
         entry->cloneAttempted = 0;
         entry->cloneReady = 0;
+        entry->candidateDraws = 0;
+        entry->candidateScenes = 0;
+        entry->candidateLastScene = 0;
+        entry->candidateMaxVerts = 0;
+        entry->candidateMaxPrims = 0;
+        entry->candidateScore = 0;
+        entry->contaminatedDraws = 0;
+        entry->contaminatedScenes = 0;
+        entry->contaminatedLastScene = 0;
+        entry->contaminatedScore = 0;
+        entry->contaminationFlags = 0;
     }
     self->skyIsoCount = 0;
     self->skyWarmupStarted = 0;
@@ -1281,6 +1381,17 @@ static SkyIsoEntry *SkyIso_FindOrCreateEntry(WrappedDevice *self, void *origTex,
         entry->candidate = 0;
         entry->cloneAttempted = 0;
         entry->cloneReady = 0;
+        entry->candidateDraws = 0;
+        entry->candidateScenes = 0;
+        entry->candidateLastScene = 0;
+        entry->candidateMaxVerts = 0;
+        entry->candidateMaxPrims = 0;
+        entry->candidateScore = 0;
+        entry->contaminatedDraws = 0;
+        entry->contaminatedScenes = 0;
+        entry->contaminatedLastScene = 0;
+        entry->contaminatedScore = 0;
+        entry->contaminationFlags = 0;
         return entry;
     }
 }
@@ -1291,6 +1402,222 @@ static int SkyIso_IsWarmupActive(WrappedDevice *self) {
     if (self->skySceneCounter < self->skyWarmupStartScene)
         return 0;
     return ((self->skySceneCounter - self->skyWarmupStartScene) < self->skyWarmupScenes) ? 1 : 0;
+}
+
+static void SkyIso_AccumulateScore(unsigned int *score, unsigned int nv, unsigned int pc) {
+    unsigned int drawScore;
+
+    if (!score)
+        return;
+
+    drawScore = nv + (pc * 64u);
+    if (0xFFFFFFFFu - *score < drawScore)
+        *score = 0xFFFFFFFFu;
+    else
+        *score += drawScore;
+}
+
+static void SkyIso_RecordObservation(WrappedDevice *self, SkyIsoEntry *entry, unsigned int nv, unsigned int pc,
+    int candidateDraw, unsigned int contaminationFlags)
+{
+    unsigned int *draws;
+    unsigned int *scenes;
+    unsigned int *lastScene;
+    unsigned int *score;
+
+    if (!entry)
+        return;
+
+    if (candidateDraw) {
+        draws = &entry->candidateDraws;
+        scenes = &entry->candidateScenes;
+        lastScene = &entry->candidateLastScene;
+        score = &entry->candidateScore;
+    } else {
+        draws = &entry->contaminatedDraws;
+        scenes = &entry->contaminatedScenes;
+        lastScene = &entry->contaminatedLastScene;
+        score = &entry->contaminatedScore;
+        entry->contaminationFlags |= contaminationFlags;
+    }
+
+    if (*lastScene != self->skySceneCounter) {
+        *lastScene = self->skySceneCounter;
+        (*scenes)++;
+    }
+
+    (*draws)++;
+    if (candidateDraw) {
+        if (nv > entry->candidateMaxVerts)
+            entry->candidateMaxVerts = nv;
+        if (pc > entry->candidateMaxPrims)
+            entry->candidateMaxPrims = pc;
+    }
+    SkyIso_AccumulateScore(score, nv, pc);
+}
+
+static int SkyIso_IsCandidateBaseDraw(WrappedDevice *self, unsigned int nv, unsigned int pc, unsigned int stage);
+
+static int SkyIso_IsCandidateCleanDraw(WrappedDevice *self, unsigned int nv, unsigned int pc, unsigned int stage, int animatedTex0) {
+    if (!SkyIso_IsCandidateBaseDraw(self, nv, pc, stage))
+        return 0;
+    if (animatedTex0)
+        return 0;
+    if (self->curDeclHasMorph)
+        return 0;
+    if (self->curDeclIsSkinned)
+        return 0;
+    if (self->curDeclUsesAuxStreams)
+        return 0;
+    return 1;
+}
+
+static unsigned int SkyIso_GetContaminationFlags(WrappedDevice *self, int candidateDraw, int animatedTex0) {
+    unsigned int flags = 0;
+
+    if (candidateDraw)
+        return 0;
+
+    if (animatedTex0)
+        flags |= SKY_ISO_CONTAM_ANIMATED;
+    if (!mat4_approx_equal(self->savedView, s_identity4x4, 1e-5f))
+        flags |= SKY_ISO_CONTAM_NON_ID_VIEW;
+    if (!mat4_approx_equal(self->savedWorld, s_identity4x4, 1e-5f))
+        flags |= SKY_ISO_CONTAM_NON_ID_WORLD;
+    if (self->curDeclPosType != D3DDECLTYPE_FLOAT3)
+        flags |= SKY_ISO_CONTAM_NON_FLOAT3;
+    if (self->curDeclPosType == D3DDECLTYPE_SHORT4)
+        flags |= SKY_ISO_CONTAM_SHORT4;
+    if (self->curDeclHasMorph || self->curDeclIsSkinned)
+        flags |= SKY_ISO_CONTAM_DEFORMED;
+    if (self->curDeclUsesAuxStreams)
+        flags |= SKY_ISO_CONTAM_AUX_STREAM;
+
+    return flags | SKY_ISO_CONTAM_NON_CANDIDATE;
+}
+
+static SkyIsoEntry *SkyIso_ObserveDraw(WrappedDevice *self, unsigned int stage, unsigned int nv, unsigned int pc, int animatedTex0) {
+    void *origTex;
+    SkyIsoEntry *entry;
+    int candidateDraw;
+    unsigned int contaminationFlags;
+
+    if (!self->levelSceneDetected)
+        return NULL;
+
+    if (!self->skyIsolationEnable || stage >= 8)
+        return NULL;
+
+    /* Defer sky-texture cloning until gameplay patches are active.
+     * Early startup/menu scenes are the known cold-start crash path. */
+    if (!self->memoryPatchesApplied)
+        return NULL;
+
+    if (!self->skyWarmupStarted && self->viewProjValid) {
+        self->skyWarmupStarted = 1;
+        self->skyWarmupStartScene = self->skySceneCounter;
+        log_int("SkyIso: warmup start scene=", (int)self->skyWarmupStartScene);
+        log_int("SkyIso: warmup scenes=", (int)self->skyWarmupScenes);
+    }
+
+    origTex = self->curTexture[stage];
+    if (!origTex)
+        return NULL;
+
+    entry = SkyIso_FindOrCreateEntry(self, origTex, 1);
+    if (!entry)
+        return NULL;
+
+    if (entry->candidateDraws == 0 && entry->contaminatedDraws == 0)
+        log_hex("SkyIso: observed texture=", (unsigned int)origTex);
+
+    candidateDraw = SkyIso_IsCandidateCleanDraw(self, nv, pc, stage, animatedTex0);
+    contaminationFlags = SkyIso_GetContaminationFlags(self, candidateDraw, animatedTex0);
+    SkyIso_RecordObservation(self, entry, nv, pc, candidateDraw, contaminationFlags);
+    return entry;
+}
+
+static int SkyIso_IsRankEligible(const SkyIsoEntry *entry, unsigned int bestScenes, unsigned int bestScore) {
+    unsigned int minScenes;
+
+    if (!entry || !entry->origTex || entry->candidateScenes == 0 || entry->candidateScore == 0)
+        return 0;
+    if (entry->contaminatedDraws > 0 || entry->contaminatedScenes > 0 ||
+        entry->contaminatedScore > 0 || entry->contaminationFlags != 0)
+        return 0;
+
+    minScenes = bestScenes;
+    if (minScenes > SKY_ISO_AUTO_MIN_SCENES)
+        minScenes = SKY_ISO_AUTO_MIN_SCENES;
+    if (bestScenes >= 2 && minScenes < 2)
+        minScenes = 2;
+    if (entry->candidateScenes < minScenes)
+        return 0;
+
+    if (bestScenes > 1 && (entry->candidateScenes * 2u) < bestScenes)
+        return 0;
+
+    if (bestScore > 0) {
+        unsigned __int64 lhs = (unsigned __int64)entry->candidateScore * 100u;
+        unsigned __int64 rhs = (unsigned __int64)bestScore * SKY_ISO_AUTO_MIN_SCORE_PCT;
+        if (lhs < rhs)
+            return 0;
+    }
+
+    return 1;
+}
+
+static void SkyIso_RefreshCandidateSet(WrappedDevice *self) {
+    int prevCandidate[SKY_ISO_MAX];
+    int taken[SKY_ISO_MAX];
+    int i, slot;
+    unsigned int bestScenes = 0;
+    unsigned int bestScore = 0;
+
+    for (i = 0; i < self->skyIsoCount; i++) {
+        prevCandidate[i] = self->skyIso[i].candidate;
+        self->skyIso[i].candidate = 0;
+        taken[i] = 0;
+        if (self->skyIso[i].candidateScenes > bestScenes)
+            bestScenes = self->skyIso[i].candidateScenes;
+        if (self->skyIso[i].candidateScore > bestScore)
+            bestScore = self->skyIso[i].candidateScore;
+    }
+
+    for (slot = 0; slot < SKY_ISO_AUTO_MAX_TEXTURES; slot++) {
+        int bestIdx = -1;
+        for (i = 0; i < self->skyIsoCount; i++) {
+            SkyIsoEntry *entry = &self->skyIso[i];
+            if (taken[i] || !SkyIso_IsRankEligible(entry, bestScenes, bestScore))
+                continue;
+
+            if (bestIdx < 0 ||
+                entry->candidateScore > self->skyIso[bestIdx].candidateScore ||
+                (entry->candidateScore == self->skyIso[bestIdx].candidateScore &&
+                 entry->candidateScenes > self->skyIso[bestIdx].candidateScenes) ||
+                (entry->candidateScore == self->skyIso[bestIdx].candidateScore &&
+                 entry->candidateScenes == self->skyIso[bestIdx].candidateScenes &&
+                 entry->candidateMaxVerts > self->skyIso[bestIdx].candidateMaxVerts)) {
+                bestIdx = i;
+            }
+        }
+        if (bestIdx < 0)
+            break;
+        self->skyIso[bestIdx].candidate = 1;
+        taken[bestIdx] = 1;
+    }
+
+    for (i = 0; i < self->skyIsoCount; i++) {
+        SkyIsoEntry *entry = &self->skyIso[i];
+        if (entry->candidate && !prevCandidate[i]) {
+            log_hex("SkyIso: promoted texture=", (unsigned int)entry->origTex);
+            log_int("SkyIso: promoted candidate scenes=", (int)entry->candidateScenes);
+            log_int("SkyIso: promoted candidate draws=", (int)entry->candidateDraws);
+            log_int("SkyIso: promoted contamination scenes=", (int)entry->contaminatedScenes);
+            log_int("SkyIso: promoted contamination draws=", (int)entry->contaminatedDraws);
+            log_hex("SkyIso: promoted contamination flags=", entry->contaminationFlags);
+        }
+    }
 }
 
 static int SkyIso_CloneTexture(WrappedDevice *self, SkyIsoEntry *entry) {
@@ -1419,50 +1746,42 @@ static int SkyIso_IsCandidateBaseDraw(WrappedDevice *self, unsigned int nv, unsi
     return 1;
 }
 
-static void *SkyIso_BindForDraw(WrappedDevice *self, unsigned int stage, unsigned int nv, unsigned int pc, int animatedTex0) {
-    void *origTex;
-    SkyIsoEntry *entry;
-    int isCandidateBase;
+static unsigned int SkyIso_EstimateVertexCount(unsigned int pt, unsigned int pc) {
+    switch (pt) {
+        case 1: return pc;
+        case 2: return pc * 2u;
+        case 3: return pc + 1u;
+        case 4: return pc * 3u;
+        case 5: return pc + 2u;
+        case 6: return pc + 2u;
+        default: return pc * 3u;
+    }
+}
+
+static void *SkyIso_BindForDraw(WrappedDevice *self, unsigned int stage, SkyIsoEntry *entry,
+    unsigned int nv, unsigned int pc, int animatedTex0)
+{
     int warmupActive;
     static int s_animatedSkipLogs = 0;
     static int s_applyLogs = 0;
 
-    if (!self->skyIsolationEnable || stage >= 8)
+    if (!entry || stage >= 8)
         return NULL;
 
-    if (!self->skyWarmupStarted && self->viewProjValid) {
-        self->skyWarmupStarted = 1;
-        self->skyWarmupStartScene = self->skySceneCounter;
-        log_int("SkyIso: warmup start scene=", (int)self->skyWarmupStartScene);
-        log_int("SkyIso: warmup scenes=", (int)self->skyWarmupScenes);
-    }
-
-    origTex = self->curTexture[stage];
-    if (!origTex)
-        return NULL;
-
-    isCandidateBase = SkyIso_IsCandidateBaseDraw(self, nv, pc, stage);
-    if (!isCandidateBase)
-        return NULL;
-
-    if (animatedTex0) {
+    if (!SkyIso_IsCandidateCleanDraw(self, nv, pc, stage, animatedTex0)) {
         if (s_animatedSkipLogs < 16) {
-            log_str("SkyIso: skip animated texture draw\r\n");
+            if (animatedTex0)
+                log_str("SkyIso: skip animated texture draw\r\n");
             s_animatedSkipLogs++;
         }
         return NULL;
     }
 
-    entry = SkyIso_FindOrCreateEntry(self, origTex, 1);
-    if (!entry)
+    warmupActive = SkyIso_IsWarmupActive(self);
+    if (warmupActive)
         return NULL;
 
-    warmupActive = SkyIso_IsWarmupActive(self);
-    if (warmupActive && !entry->candidate) {
-        entry->candidate = 1;
-        log_hex("SkyIso: candidate texture=", (unsigned int)origTex);
-    }
-
+    SkyIso_RefreshCandidateSet(self);
     if (!entry->candidate)
         return NULL;
 
@@ -1477,12 +1796,59 @@ static void *SkyIso_BindForDraw(WrappedDevice *self, unsigned int stage, unsigne
     }
 
     if (s_applyLogs < 32) {
-        log_hex("SkyIso: applied orig=", (unsigned int)origTex);
+        log_hex("SkyIso: applied orig=", (unsigned int)entry->origTex);
         log_hex("SkyIso: applied iso =", (unsigned int)entry->isoTex);
         s_applyLogs++;
     }
 
-    return origTex;
+    return entry->origTex;
+}
+
+static void PinnedDraw_ReleaseAll(WrappedDevice *self);
+static void DrawCache_Clear(void);
+
+static int TRL_IsMenuLikeScene(WrappedDevice *self) {
+    if (self->drawsTotal == 0)
+        return 0;
+    return self->drawsProcessed <= 32 && self->drawsS4 == 0 && self->drawsF3 <= 32;
+}
+
+static int TRL_IsTransitionBlipScene(WrappedDevice *self) {
+    if (self->drawsTotal == 0)
+        return 0;
+    return self->drawsProcessed <= 1 && self->drawsS4 == 0 && self->drawsF3 <= 1;
+}
+
+static int TRL_IsGameplayReadyScene(WrappedDevice *self) {
+    if (self->drawsTotal == 0)
+        return 0;
+    return self->drawsProcessed >= 512 && self->drawsS4 >= 256;
+}
+
+static void TRL_LogTransitionScene(WrappedDevice *self, const char *tag) {
+    log_str(tag);
+    log_int(" scene=", (int)self->sceneCount);
+    log_int(" d=", (int)self->drawsProcessed);
+    log_int(" s4=", (int)self->drawsS4);
+    log_int(" f3=", (int)self->drawsF3);
+    log_str("\r\n");
+}
+
+static void TRL_OnLevelSceneDetected(WrappedDevice *self) {
+    self->levelSceneDetected = 1;
+    self->replayFeaturesEnabled = 0;
+    self->skyWarmupStarted = 0;
+    self->skyWarmupStartScene = 0;
+    self->vpInverseValid = 0;
+    self->proj3DCached = 0;
+    self->postLatchSceneLogsRemaining = 30;
+    SkyIso_Clear(self);
+    PinnedDraw_ReleaseAll(self);
+#if DRAW_CACHE_ENABLED
+    DrawCache_Clear();
+#endif
+    TRL_LogTransitionScene(self, "Transition: gameplay scene latched");
+    log_str("Transition: replay features remain disabled for TRL stability\r\n");
 }
 
 static void SkyIso_RestoreAfterDraw(WrappedDevice *self, unsigned int stage, void *origTex) {
@@ -1703,7 +2069,7 @@ static void PinnedDraw_ReplayMissing(WrappedDevice *self) {
             if (pd->isShort4 && pd->vertexBuffer && pd->vertexDecl) {
                 if (!S4_ExpandAndDraw(self, pd->vertexBuffer, pd->vbOffset, pd->vbStride,
                                       pd->vertexDecl, pd->posOff,
-                                      pd->primType, pd->baseVertexIndex, pd->numVertices,
+                                      pd->primType, pd->baseVertexIndex, pd->minVertexIndex, pd->numVertices,
                                       pd->startIndex, pd->primCount,
                                       world, view, proj)) {
                     ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_WORLD, world);
@@ -1796,6 +2162,23 @@ static void TRL_ApplyTransformOverrides(WrappedDevice *self) {
     for (i = 0; i < 16; i++) {
         view[i] = gameView[i];
         proj[i] = gameProj[i];
+    }
+
+    /* H4 fix: lock View/Proj across frames to absorb sub-pixel camera jitter.
+     * TRL updates the raw View/Proj matrices in game memory every frame with
+     * small (~0.001..0.009) deltas even when the player is idle. Without the
+     * lock, Remix sees a different W*V*P composite every frame and re-hashes
+     * geometry under rtx.geometryGenerationHashRuleString, producing per-frame
+     * position jitter (earthquake) and unwelded-looking triangle seams. */
+    if (self->vpLockValid &&
+        !mat4_changed(view, self->vpLockView, H4_VP_LOCK_THRESHOLD) &&
+        !mat4_changed(proj, self->vpLockProj, H4_VP_LOCK_THRESHOLD)) {
+        memcpy(view, self->vpLockView, 64);
+        memcpy(proj, self->vpLockProj, 64);
+    } else {
+        memcpy(self->vpLockView, view, 64);
+        memcpy(self->vpLockProj, proj, 64);
+        self->vpLockValid = 1;
     }
 
     /* Cache the first valid 3D projection for quad detection.
@@ -1940,12 +2323,16 @@ static void TRL_InjectLight(WrappedDevice *self) {
 
 /*
  * Configure fixed-function texture and lighting state for null-VS draws.
- * Use applyTex0Transform=1 on live draws, 0 on replay draws (non-animated).
+ * Keep stage-0 texture transforms disabled for rigid FFP draws: TRL's shader
+ * UV-animation constants are not stable enough to project into generic FFP
+ * state without making world textures wobble. Animated/deformed draws stay on
+ * the shader route instead.
  */
 static void TRL_ApplyFFPDrawState(WrappedDevice *self, int applyTex0Transform) {
     typedef int (__stdcall *FN_SetRS)(void*, unsigned int, unsigned int);
     typedef int (__stdcall *FN_SetTSS)(void*, unsigned int, unsigned int, unsigned int);
     void **vt = RealVtbl(self);
+    (void)applyTex0Transform;
 
     ((FN_SetTSS)vt[SLOT_SetTextureStageState])(self->pReal, 0, D3DTSS_COLOROP, D3DTOP_MODULATE);
     ((FN_SetTSS)vt[SLOT_SetTextureStageState])(self->pReal, 0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
@@ -1954,10 +2341,7 @@ static void TRL_ApplyFFPDrawState(WrappedDevice *self, int applyTex0Transform) {
     ((FN_SetTSS)vt[SLOT_SetTextureStageState])(self->pReal, 0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
     ((FN_SetTSS)vt[SLOT_SetTextureStageState])(self->pReal, 0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
     ((FN_SetTSS)vt[SLOT_SetTextureStageState])(self->pReal, 0, D3DTSS_TEXCOORDINDEX, 0);
-    if (applyTex0Transform)
-        TRL_ApplyTexture0TransformState(self);
-    else
-        TRL_ClearTexture0TransformState(self);
+    TRL_ClearTexture0TransformState(self);
     ((FN_SetTSS)vt[SLOT_SetTextureStageState])(self->pReal, 1, D3DTSS_COLOROP, D3DTOP_DISABLE);
 
     ((FN_SetRS)vt[SLOT_SetRenderState])(self->pReal, D3DRS_LIGHTING, 1);
@@ -2161,7 +2545,7 @@ static void S4_FlushVBCache(WrappedDevice *self) {
  * expansion is needed. On cache miss, performs the expansion and caches it. */
 static void *S4_GetCachedExpVB(WrappedDevice *self,
     void *srcVB, unsigned int srcOff, unsigned int srcStride, int posOff,
-    int bvi, unsigned int nv, int expStride, unsigned int *outExpStride,
+    unsigned int baseVtx, unsigned int nv, int expStride, unsigned int *outExpStride,
     void *origDecl)
 {
     typedef int (__stdcall *FN_CreateVB)(void*, unsigned int, unsigned int, unsigned int, unsigned int, void**, void*);
@@ -2183,7 +2567,7 @@ static void *S4_GetCachedExpVB(WrappedDevice *self,
         unsigned char *fpData = NULL;
         unsigned int fpSize = 32;
         if (nv * srcStride < fpSize) fpSize = nv * srcStride;
-        if (((FN_VBLock)srcVt[11])(srcVB, srcOff + (unsigned int)bvi * srcStride,
+        if (((FN_VBLock)srcVt[11])(srcVB, srcOff + baseVtx * srcStride,
                 fpSize, (void**)&fpData, D3DLOCK_READONLY) == 0 && fpData) {
             unsigned int *w = (unsigned int*)fpData;
             unsigned int n = fpSize / 4;
@@ -2199,7 +2583,7 @@ static void *S4_GetCachedExpVB(WrappedDevice *self,
     for (i = 0; i < self->s4VBCacheCount; i++) {
         if (self->s4VBCache[i].srcVB == srcVB &&
             self->s4VBCache[i].srcOff == srcOff &&
-            self->s4VBCache[i].bvi == bvi &&
+            self->s4VBCache[i].bvi == (int)baseVtx &&
             self->s4VBCache[i].nv == nv &&
             self->s4VBCache[i].fingerprint == fp) {
             *outExpStride = self->s4VBCache[i].expStride;
@@ -2219,7 +2603,7 @@ static void *S4_GetCachedExpVB(WrappedDevice *self,
         return NULL;
 
     /* Lock source */
-    if (((FN_VBLock)srcVt[11])(srcVB, srcOff + (unsigned int)bvi * srcStride,
+    if (((FN_VBLock)srcVt[11])(srcVB, srcOff + baseVtx * srcStride,
             totalSrc, (void**)&srcData, D3DLOCK_READONLY) != 0 || !srcData) {
         typedef unsigned long (__stdcall *FN_Rel)(void*);
         ((FN_Rel)(*(void***)newVB)[2])(newVB);
@@ -2325,7 +2709,7 @@ static void *S4_GetCachedExpVB(WrappedDevice *self,
     }
     self->s4VBCache[slot].srcVB = srcVB;
     self->s4VBCache[slot].srcOff = srcOff;
-    self->s4VBCache[slot].bvi = bvi;
+    self->s4VBCache[slot].bvi = (int)baseVtx;
     self->s4VBCache[slot].nv = nv;
     self->s4VBCache[slot].fingerprint = fp;
     self->s4VBCache[slot].expVB = newVB;
@@ -2339,7 +2723,7 @@ static void *S4_GetCachedExpVB(WrappedDevice *self,
  * Returns 1 on success, 0 on failure (falls through to original draw). */
 static int S4_ExpandAndDraw(WrappedDevice *self,
     void *srcVB, unsigned int srcOff, unsigned int srcStride, void *origDecl, int posOff,
-    unsigned int pt, int bvi, unsigned int nv, unsigned int si, unsigned int pc,
+    unsigned int pt, int bvi, unsigned int mi, unsigned int nv, unsigned int si, unsigned int pc,
     float *world, float *view, float *proj)
 {
     typedef int (__stdcall *FN_SetTransform)(void*, unsigned int, float*);
@@ -2352,6 +2736,7 @@ static int S4_ExpandAndDraw(WrappedDevice *self,
     void *expVB;
     int expStride = 0;
     unsigned int cachedStride = 0;
+    unsigned int baseVtx = (unsigned int)bvi + mi;
 
     /* Get expanded declaration */
     {
@@ -2369,7 +2754,7 @@ static int S4_ExpandAndDraw(WrappedDevice *self,
 
     /* Get cached expanded VB (expands on first call, reuses after) */
     expVB = S4_GetCachedExpVB(self, srcVB, srcOff, srcStride, posOff,
-                              bvi, nv, expStride, &cachedStride, origDecl);
+                              baseVtx, nv, expStride, &cachedStride, origDecl);
     if (!expVB) return 0;
 
     /* Set expanded VB + declaration */
@@ -2390,8 +2775,9 @@ static int S4_ExpandAndDraw(WrappedDevice *self,
 
     TRL_ApplyFFPDrawState(self, 1);
 
-    /* Draw with bvi=0 since expanded VB starts at vertex 0 */
-    ((FN_DIP)vt[SLOT_DrawIndexedPrimitive])(self->pReal, pt, 0, 0, nv, si, pc);
+    /* Expanded VB contains vertices [baseVtx .. baseVtx+nv-1].
+     * Rebase the original indices into [0 .. nv-1] via BaseVertexIndex=-mi. */
+    ((FN_DIP)vt[SLOT_DrawIndexedPrimitive])(self->pReal, pt, -(int)mi, mi, nv, si, pc);
 
     /* Restore original state */
     ((FN_SetSS)vt[SLOT_SetStreamSource])(self->pReal, 0, srcVB, srcOff, srcStride);
@@ -2436,6 +2822,7 @@ static void DrawCache_Record(WrappedDevice *self, unsigned int pt, int bvi,
 {
     void *vb = self->streamVB[0];
     void *ib = NULL;
+    void *tex0 = self->curTexture[self->albedoStage];
     int i, slot = -1;
 
     /* Get current index buffer — GetIndices AddRefs; keep that ref as our cache ref */
@@ -2449,9 +2836,16 @@ static void DrawCache_Record(WrappedDevice *self, unsigned int pt, int bvi,
         if (s_drawCache[i].active &&
             s_drawCache[i].vb == vb &&
             s_drawCache[i].ib == ib &&
+            s_drawCache[i].tex0 == tex0 &&
+            s_drawCache[i].pt == pt &&
+            s_drawCache[i].bvi == bvi &&
+            s_drawCache[i].mi == mi &&
             s_drawCache[i].si == si &&
             s_drawCache[i].pc == pc &&
-            s_drawCache[i].nv == nv) {
+            s_drawCache[i].nv == nv &&
+            s_drawCache[i].streamOff == self->streamOffset[0] &&
+            s_drawCache[i].streamStr == self->streamStride[0] &&
+            s_drawCache[i].decl == self->lastDecl) {
             slot = i;
             break;
         }
@@ -2480,7 +2874,7 @@ static void DrawCache_Record(WrappedDevice *self, unsigned int pt, int bvi,
         c->bvi = bvi;
         c->mi = mi;
         c->decl = self->lastDecl; com_addref(c->decl);
-        c->tex0 = self->curTexture[self->albedoStage]; com_addref(c->tex0);
+        c->tex0 = tex0; com_addref(c->tex0);
         c->streamOff = self->streamOffset[0];
         c->streamStr = self->streamStride[0];
         c->isShort4 = (self->curDeclPosType == D3DDECLTYPE_SHORT4) ? 1 : 0;
@@ -2547,7 +2941,7 @@ static void DrawCache_Replay(WrappedDevice *self) {
         if (c->isShort4 && c->vb && c->decl) {
             /* SHORT4 draw: expand and draw in FFP mode */
             S4_ExpandAndDraw(self, c->vb, c->streamOff, c->streamStr, c->decl, c->posOff,
-                c->pt, c->bvi, c->nv, c->si, c->pc, c->world, viewForDraw, proj);
+                c->pt, c->bvi, c->mi, c->nv, c->si, c->pc, c->world, viewForDraw, proj);
         } else {
             ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_WORLD, c->world);
             ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_VIEW, viewForDraw);
@@ -2777,6 +3171,7 @@ static int __stdcall WD_Reset(WrappedDevice *self, void *pPresentParams) {
     self->lastVS = NULL;
     self->lastPS = NULL;
     self->viewProjValid = 0;
+    self->vpLockValid = 0;
     self->ffpSetup = 0;
     self->worldDirty = 0;
     self->viewProjDirty = 0;
@@ -2910,11 +3305,13 @@ static int __stdcall WD_BeginScene(WrappedDevice *self) {
     self->sceneCount++;
     self->skySceneCounter++;
 
-    /* Defer memory patches until a level is loaded — viewProjValid is set
-     * when the game writes VS constants (c0-c3 or c12-c15), which only
-     * happens during gameplay. The main menu never sets these registers,
-     * so patches that NOP scene graph traversal won't crash it. */
-    if (self->viewProjValid && !self->memoryPatchesApplied) {
+    /* Defer memory patches until a real gameplay camera exists. The front-end
+     * Lara scene writes VS constants too, but keeps the raw game View matrix
+     * at identity and is not safe for level-only traversal patches. */
+    if (self->levelSceneDetected && self->viewProjValid &&
+        TRL_HasGameplayCamera() && !self->memoryPatchesApplied) {
+        log_int("TRL: applying gameplay memory patches at scene=", (int)self->sceneCount);
+        log_str("\r\n");
         TRL_ApplyMemoryPatches(self);
         /* Flush draws cached during loading screens — they carry wrong world matrices
          * for the gameplay scene. Also releases their COM refs so freed menu resources
@@ -2922,6 +3319,11 @@ static int __stdcall WD_BeginScene(WrappedDevice *self) {
 #if DRAW_CACHE_ENABLED
         DrawCache_Clear();
 #endif
+    } else if (!self->levelSceneDetected && !self->memoryPatchesApplied &&
+               self->sceneCount > 500 && self->sceneCount < 1500 &&
+               (self->sceneCount % 120) == 0) {
+        log_int("TRL: memory patches deferred until level latch scene=", (int)self->sceneCount);
+        log_str("\r\n");
     }
 
     /* Re-stamp game globals every scene, but only after patches are applied
@@ -2951,6 +3353,7 @@ static int __stdcall WD_BeginScene(WrappedDevice *self) {
  * via the running counters. */
 static int __stdcall WD_EndScene(WrappedDevice *self) {
     typedef int (__stdcall *FN)(void*);
+    unsigned int sceneDrawsProcessed = self->drawsProcessed;
 
     /* Log per-scene draw counts for culling investigation.
      * Start after scene 500 (past startup), log every 2nd scene for 1000 scenes. */
@@ -2960,8 +3363,38 @@ static int __stdcall WD_EndScene(WrappedDevice *self) {
         log_int(" s4=", self->drawsS4);
         log_int(" f3=", self->drawsF3);
         log_int(" p=", self->drawsPassthrough);
+        log_int(" q=", self->transformsBlocked);
         log_str("\r\n");
     }
+    if (!self->levelSceneDetected && TRL_IsMenuLikeScene(self)) {
+        if (!self->sawMenuScene)
+            TRL_LogTransitionScene(self, "Transition: front-end scene observed");
+        self->sawMenuScene = 1;
+    } else if (!self->levelSceneDetected && self->sawMenuScene &&
+               TRL_IsTransitionBlipScene(self)) {
+        if (!self->sawTransitionBlip)
+            TRL_LogTransitionScene(self, "Transition: handoff blip observed");
+        self->sawTransitionBlip = 1;
+    } else if (!self->levelSceneDetected && TRL_IsGameplayReadyScene(self) &&
+               (self->sawMenuScene || self->sawTransitionBlip)) {
+        TRL_OnLevelSceneDetected(self);
+    } else if (!self->levelSceneDetected && self->sawMenuScene &&
+               TRL_IsGameplayReadyScene(self)) {
+        TRL_LogTransitionScene(self, "Transition: gameplay-like scene seen before latch");
+    }
+
+    if (self->levelSceneDetected && self->drawsTotal > 0 &&
+        self->postLatchSceneLogsRemaining > 0) {
+        log_int("PostLatch scene=", (int)self->sceneCount);
+        log_int(" d=", (int)self->drawsProcessed);
+        log_int(" s4=", (int)self->drawsS4);
+        log_int(" f3=", (int)self->drawsF3);
+        log_int(" replay=", self->replayFeaturesEnabled);
+        log_int(" patches=", self->memoryPatchesApplied);
+        log_str("\r\n");
+        self->postLatchSceneLogsRemaining--;
+    }
+    self->lastSceneDrawsProcessed = sceneDrawsProcessed;
     /* Reset per-scene draw counters */
     if (self->drawsTotal > 0) {
         self->drawsProcessed = 0;
@@ -2994,7 +3427,7 @@ static int __stdcall WD_EndScene(WrappedDevice *self) {
 
     /* Replay culled draws before ending the scene */
 #if DRAW_CACHE_ENABLED
-    if (self->viewProjValid && self->frameCount > 60) {
+    if (self->replayFeaturesEnabled && self->viewProjValid && self->frameCount > 60) {
         DrawCache_Replay(self);
     }
 #endif
@@ -3007,6 +3440,13 @@ static int __stdcall WD_EndScene(WrappedDevice *self) {
 static int __stdcall WD_DrawPrimitive(WrappedDevice *self, unsigned int pt, unsigned int sv, unsigned int pc) {
     typedef int (__stdcall *FN)(void*, unsigned int, unsigned int, unsigned int);
     int hr;
+    int animatedTex0 = 0;
+    int float3Route = FLOAT3_ROUTE_NULL_VS;
+    int short4ShaderRoute = 0;
+    void *skyIsoOrigTex = NULL;
+    SkyIsoEntry *skyIsoEntry = NULL;
+    unsigned int skyStage = (unsigned int)self->albedoStage;
+    unsigned int nv = SkyIso_EstimateVertexCount(pt, pc);
     self->drawCallCount++;
 
     self->drawsTotal++;
@@ -3027,9 +3467,21 @@ static int __stdcall WD_DrawPrimitive(WrappedDevice *self, unsigned int pt, unsi
             void **vt = RealVtbl(self);
 
             TRL_PrepDraw(self);
+            animatedTex0 = TRL_DrawHasAnimatedTexture0(self);
+            if (self->curDeclPosType == D3DDECLTYPE_FLOAT3)
+                float3Route = TRL_GetEffectiveFloat3Route(self);
+            if (animatedTex0 && self->curDeclPosType == D3DDECLTYPE_FLOAT3)
+                float3Route = FLOAT3_ROUTE_SHADER;
+            short4ShaderRoute = TRL_ShouldShaderRouteAnimatedShort4Draw(self, animatedTex0);
+            skyIsoEntry = SkyIso_ObserveDraw(self, skyStage, nv, pc, animatedTex0);
+            if (self->curDeclPosType == D3DDECLTYPE_FLOAT3)
+                skyIsoOrigTex = SkyIso_BindForDraw(self, skyStage, skyIsoEntry, nv, pc, animatedTex0);
             if (self->curDeclPosType == D3DDECLTYPE_FLOAT3 &&
-                TRL_GetEffectiveFloat3Route(self) == FLOAT3_ROUTE_SHADER) {
-                /* Shader route for FLOAT3 when vertex capture is effective. */
+                float3Route == FLOAT3_ROUTE_SHADER) {
+                /* Keep animated TEX0 FLOAT3 draws on the shader path so water motion survives. */
+                hr = ((FN)vt[SLOT_DrawPrimitive])(self->pReal, pt, sv, pc);
+            } else if (short4ShaderRoute) {
+                /* Preserve shader-driven UV scroll or mesh deformation on animated SHORT4 draws. */
                 hr = ((FN)vt[SLOT_DrawPrimitive])(self->pReal, pt, sv, pc);
             } else {
                 /* Legacy null-VS fallback path. */
@@ -3040,7 +3492,12 @@ static int __stdcall WD_DrawPrimitive(WrappedDevice *self, unsigned int pt, unsi
                     ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, self->lastVS);
             }
 
-            if (self->curDeclPosType == D3DDECLTYPE_FLOAT3)
+            if (skyIsoOrigTex)
+                SkyIso_RestoreAfterDraw(self, skyStage, skyIsoOrigTex);
+
+            if (self->curDeclPosType == D3DDECLTYPE_SHORT4)
+                self->drawsS4++;
+            else if (self->curDeclPosType == D3DDECLTYPE_FLOAT3)
                 self->drawsF3++;
             self->drawsProcessed++;
         }
@@ -3072,7 +3529,9 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
     int animatedTex0 = 0;
     int float3Route = FLOAT3_ROUTE_NULL_VS;
     int shaderRouteFloat3 = 0;
+    int shaderRouteShort4 = 0;
     void *skyIsoOrigTex = NULL;
+    SkyIsoEntry *skyIsoEntry = NULL;
     unsigned int skyStage = (unsigned int)self->albedoStage;
     self->drawCallCount++;
 
@@ -3091,16 +3550,23 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
             animatedTex0 = TRL_DrawHasAnimatedTexture0(self);
             if (self->curDeclPosType == D3DDECLTYPE_FLOAT3)
                 float3Route = TRL_GetEffectiveFloat3Route(self);
+            if (animatedTex0 && self->curDeclPosType == D3DDECLTYPE_FLOAT3)
+                float3Route = FLOAT3_ROUTE_SHADER;
+            if (self->curDeclPosType == D3DDECLTYPE_SHORT4)
+                shaderRouteShort4 = TRL_ShouldShaderRouteAnimatedShort4Draw(self, animatedTex0);
+            skyIsoEntry = SkyIso_ObserveDraw(self, skyStage, nv, pc, animatedTex0);
 
             if (self->curDeclPosType == D3DDECLTYPE_FLOAT3)
-                skyIsoOrigTex = SkyIso_BindForDraw(self, skyStage, nv, pc, animatedTex0);
+                skyIsoOrigTex = SkyIso_BindForDraw(self, skyStage, skyIsoEntry, nv, pc, animatedTex0);
 
             /* SHORT4 positions: expand to FLOAT3 on CPU, draw in FFP mode.
              * This eliminates useVertexCapture and gives stable position hashes. */
-            if (self->curDeclPosType == D3DDECLTYPE_SHORT4 && self->streamVB[0] && self->lastDecl) {
+            if (self->curDeclPosType == D3DDECLTYPE_SHORT4 &&
+                !shaderRouteShort4 &&
+                self->streamVB[0] && self->lastDecl) {
                 if (!S4_ExpandAndDraw(self, self->streamVB[0], self->streamOffset[0],
                         self->streamStride[0], self->lastDecl, self->s4PosOff,
-                        pt, bvi, nv, si, pc,
+                        pt, bvi, mi, nv, si, pc,
                         self->savedWorld, self->savedView, self->savedProj)) {
                     /* Fallback: draw as-is */
                     hr = ((FN)RealVtbl(self)[SLOT_DrawIndexedPrimitive])(self->pReal, pt, bvi, mi, nv, si, pc);
@@ -3109,10 +3575,13 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
                 }
                 self->drawsS4++;
             } else {
-                if (self->curDeclPosType == D3DDECLTYPE_FLOAT3 && float3Route == FLOAT3_ROUTE_SHADER) {
-                    /* Shader route for FLOAT3: keep VS/PS bound and avoid FFP stage overrides. */
+                if ((self->curDeclPosType == D3DDECLTYPE_FLOAT3 && float3Route == FLOAT3_ROUTE_SHADER) ||
+                    shaderRouteShort4) {
+                    /* Shader route: keep VS/PS bound for FLOAT3 draws and for animated/deformed
+                     * SHORT4 draws that rely on shader-side UV scroll, morphing, or extra streams. */
                     hr = ((FN)RealVtbl(self)[SLOT_DrawIndexedPrimitive])(self->pReal, pt, bvi, mi, nv, si, pc);
-                    shaderRouteFloat3 = 1;
+                    if (self->curDeclPosType == D3DDECLTYPE_FLOAT3)
+                        shaderRouteFloat3 = 1;
                 } else {
                     /* Legacy null-VS fallback for FLOAT3 when vertex capture is off (or forced). */
                     typedef int (__stdcall *FN_SetVS)(void*, void*);
@@ -3123,20 +3592,24 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
                     if (self->lastVS)
                         ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, self->lastVS);
                 }
-                self->drawsF3++;
+                if (self->curDeclPosType == D3DDECLTYPE_SHORT4)
+                    self->drawsS4++;
+                else
+                    self->drawsF3++;
             }
 
             if (skyIsoOrigTex)
                 SkyIso_RestoreAfterDraw(self, skyStage, skyIsoOrigTex);
 
 #if DRAW_CACHE_ENABLED
-            if (!animatedTex0 && !shaderRouteFloat3)
+            if (self->replayFeaturesEnabled && !animatedTex0 && !shaderRouteFloat3 && !shaderRouteShort4)
                 DrawCache_Record(self, pt, bvi, mi, nv, si, pc);
 #endif
             self->drawsProcessed++;
 
-            /* Draw call replay cache: skip shader-route FLOAT3 draws to avoid stale replays. */
-            if (!animatedTex0 && !shaderRouteFloat3 &&
+            /* Draw call replay cache: skip shader-route draws to avoid stale replays. */
+            if (self->replayFeaturesEnabled &&
+                !animatedTex0 && !shaderRouteFloat3 && !shaderRouteShort4 &&
                 self->frameCount < PINNED_CAPTURE_FRAMES && !self->pinnedCaptureComplete) {
                 PinnedDraw *pd;
                 int idx = self->pinnedDrawCount; /* will be set if capture succeeds */
@@ -3152,7 +3625,7 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
                     pd->primCount = pc;
                 }
             }
-            if (!animatedTex0 && !shaderRouteFloat3)
+            if (self->replayFeaturesEnabled && !animatedTex0 && !shaderRouteFloat3 && !shaderRouteShort4)
                 PinnedDraw_MarkSubmitted(self);
         }
     } else {
@@ -3454,13 +3927,6 @@ static int __stdcall WD_SetVertexShaderConstantF(WrappedDevice *self,
         }
 
         if (self->lastVS) {
-            if (startReg <= VS_REG_TEX0_SCROLL && endReg > VS_REG_TEX0_SCROLL) {
-                unsigned int srcBase = (VS_REG_TEX0_SCROLL - startReg) * 4;
-                for (j = 0; j < 4; j++)
-                    self->tex0ScrollConst[j] = pData[srcBase + j];
-                self->tex0ScrollValid = 1;
-                self->tex0TransformVS = self->lastVS;
-            }
             if (startReg < VS_REG_TEX0_XFORM_END && endReg > VS_REG_TEX0_XFORM_START) {
                 unsigned int copyStart = startReg;
                 unsigned int copyEnd = endReg;
@@ -3731,6 +4197,7 @@ static int __stdcall WD_SetVertexDeclaration(WrappedDevice *self, void *pDecl) {
     self->curDeclHasPosT = 0;
     self->curDeclHasMorph = 0;
     self->curDeclPosType = -1;
+    self->curDeclUsesAuxStreams = 0;
     self->curDeclTexcoordType = -1;
     self->curDeclTexcoordOff = 0;
 #if ENABLE_SKINNING
@@ -3767,6 +4234,8 @@ static int __stdcall WD_SetVertexDeclaration(WrappedDevice *self, void *pDecl) {
                     unsigned char  usage   = el[6];
                     unsigned char  usageIdx = el[7];
                     if (stream == 0xFF || stream == 0xFFFF) break;
+                    if (stream != 0)
+                        self->curDeclUsesAuxStreams = 1;
 
                     if (usage == D3DDECLUSAGE_POSITIONT) {
                         self->curDeclHasPosT = 1;
@@ -4686,6 +5155,7 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     w->lastVS = NULL;
     w->lastPS = NULL;
     w->viewProjValid = 0;
+    w->vpLockValid = 0;
     TRL_ResetTexture0AnimationState(w);
     w->lastDecl = NULL;
     w->curDeclIsSkinned = 0;
@@ -4695,6 +5165,7 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     w->curDeclColorOff = -1;
     w->curDeclHasPosT = 0;
     w->curDeclHasMorph = 0;
+    w->curDeclUsesAuxStreams = 0;
     w->curDeclTexcoordType = -1;
     w->curDeclTexcoordOff = 0;
     w->vpInverseValid = 0;
@@ -4714,14 +5185,21 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     w->pinnedCaptureComplete = 0;
     w->useVertexCaptureEffective = 1;
     w->float3RoutingMode = FLOAT3_ROUTE_AUTO;
+    w->short4AnimatedRoutingMode = FLOAT3_ROUTE_AUTO;
     w->skyIsolationEnable = 1;
-    w->skyCandidateMinVerts = 12000;
-    w->skyCandidateMinPrims = 30;
-    w->skyWarmupScenes = 300;
+    w->skyCandidateMinVerts = 8000;
+    w->skyCandidateMinPrims = 18;
+    w->skyWarmupScenes = 120;
     w->skyWarmupStartScene = 0;
     w->skyWarmupStarted = 0;
     w->skyIsoCount = 0;
     w->skySceneCounter = 0;
+    w->lastSceneDrawsProcessed = 0;
+    w->postLatchSceneLogsRemaining = 0;
+    w->sawMenuScene = 0;
+    w->sawTransitionBlip = 0;
+    w->levelSceneDetected = 0;
+    w->replayFeaturesEnabled = 0;
     { int ts; for (ts = 0; ts < 8; ts++) w->diagTexUniq[ts] = 0; }
     w->createTick = GetTickCount();
     w->diagLoggedFrames = 0;
@@ -4730,6 +5208,7 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     {
         char iniBuf[MAX_PATH];
         char float3Mode[32];
+        char short4AnimatedMode[32];
         int skyEnable;
         int skyMinVerts;
         int skyMinPrims;
@@ -4741,11 +5220,13 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
 
         GetPrivateProfileStringA("FFP", "Float3RoutingMode", "auto", float3Mode, 32, iniBuf);
         w->float3RoutingMode = parse_float3_routing_mode(float3Mode);
+        GetPrivateProfileStringA("FFP", "Short4AnimatedRoutingMode", "auto", short4AnimatedMode, 32, iniBuf);
+        w->short4AnimatedRoutingMode = parse_float3_routing_mode(short4AnimatedMode);
 
         skyEnable = GetPrivateProfileIntA("Sky", "EnableIsolation", 1, iniBuf);
-        skyMinVerts = GetPrivateProfileIntA("Sky", "CandidateMinVerts", 12000, iniBuf);
-        skyMinPrims = GetPrivateProfileIntA("Sky", "CandidateMinPrims", 30, iniBuf);
-        skyWarmup = GetPrivateProfileIntA("Sky", "WarmupScenes", 300, iniBuf);
+        skyMinVerts = GetPrivateProfileIntA("Sky", "CandidateMinVerts", 8000, iniBuf);
+        skyMinPrims = GetPrivateProfileIntA("Sky", "CandidateMinPrims", 18, iniBuf);
+        skyWarmup = GetPrivateProfileIntA("Sky", "WarmupScenes", 120, iniBuf);
 
         if (skyMinVerts < 0) skyMinVerts = 0;
         if (skyMinPrims < 0) skyMinPrims = 0;
@@ -4764,6 +5245,9 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     if (w->float3RoutingMode == FLOAT3_ROUTE_AUTO) log_str("  Float3RoutingMode: auto\r\n");
     if (w->float3RoutingMode == FLOAT3_ROUTE_NULL_VS) log_str("  Float3RoutingMode: null_vs\r\n");
     if (w->float3RoutingMode == FLOAT3_ROUTE_SHADER) log_str("  Float3RoutingMode: shader\r\n");
+    if (w->short4AnimatedRoutingMode == FLOAT3_ROUTE_AUTO) log_str("  Short4AnimatedRoutingMode: auto\r\n");
+    if (w->short4AnimatedRoutingMode == FLOAT3_ROUTE_NULL_VS) log_str("  Short4AnimatedRoutingMode: null_vs\r\n");
+    if (w->short4AnimatedRoutingMode == FLOAT3_ROUTE_SHADER) log_str("  Short4AnimatedRoutingMode: shader\r\n");
     if (TRL_GetEffectiveFloat3Route(w) == FLOAT3_ROUTE_SHADER)
         log_str("  Float3Route effective: shader\r\n");
     else
