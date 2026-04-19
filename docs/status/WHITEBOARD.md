@@ -222,19 +222,21 @@ g_pEngineRoot (+0x214) → TRLRenderer* (+0x0C) → IDirect3DDevice9*
 ### VS Constant Register Map (Key Registers)
 | Register | Purpose |
 |----------|---------|
-| c0-c3 | World matrix (transposed) |
-| c0-c7 | WorldViewProjection (two 4x4) |
-| c8-c15 | ViewProjection (two 4x4) |
-| c16+ | Bone/skin matrices |
+| c0–c3 | World matrix (transposed, row-major) |
+| c8–c11 | View matrix |
+| c12–c15 | Projection matrix |
+| c48+ | Skinning bone matrices (3 registers/bone) |
 | c39 | Utility {2.0, 0.5, 0.0, 1.0} |
 
-### Render Paths (upstream caller analysis, build 044)
+### Render Paths (fully mapped, builds 044–072)
 ```
 RenderFrame (0x450B00)
   ├── RenderVisibleSectors (0x46C180) → RenderSector (0x46B7D0) ← proximity filter NOPed 0x46B85A
   ├── SceneTraversal wrapper (0x443C20) → SceneTraversal_CullAndSubmit (0x407150) ← all 11 NOPs + no RET
   └── Moveable object loop (0x40E2C0)
-TerrainDrawable (0x40ACF0) / TERRAIN_DrawUnits ← UNEXPLORED, PRIME SUSPECT
+TerrainDrawable (0x40ACF0) → constructor only; real draw at TerrainDrawable_Dispatch (0x40AE20) ← terrain cull gate NOPed (Layer 22)
+  └── Shares same 3-layer sector→submit→frustum-cull pipeline as regular geometry (confirmed build 072)
+RenderQueue_FrustumCull (0x40C430) ← redirected to uncull path 0x40C390 (Layer 31, build 072)
 ```
 
 ### Light Pipeline (IRRELEVANT since build 038 — lights are Remix geometry-anchored)

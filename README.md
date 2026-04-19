@@ -230,7 +230,7 @@ PASS builds include `miracle` in the folder name. Every build — pass or fail �
 
 | Document | Description |
 |----------|-------------|
-| [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md) | **Live status** — 31-layer culling map, full build history narrative, decision tree, key addresses |
+| [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md) | **Live status** — 36-layer culling map, full build history narrative, decision tree, key addresses |
 | [`docs/status/TEST_STATUS.md`](docs/status/TEST_STATUS.md) | Build-by-build pass/fail table, what's done, what remains |
 | [`docs/`](docs/) | Full documentation index — reference, guides, research |
 | [`CHANGELOG.md`](CHANGELOG.md) | Cross-session development log — findings, patches, dead ends, next steps |

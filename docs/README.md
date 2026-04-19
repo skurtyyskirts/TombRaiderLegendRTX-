@@ -12,7 +12,7 @@ Live project tracking — updated at the end of each development phase.
 
 | File | Description |
 |------|-------------|
-| [`status/WHITEBOARD.md`](status/WHITEBOARD.md) | **Live status**: 31-layer culling map, full build history narrative, decision tree, key addresses |
+| [`status/WHITEBOARD.md`](status/WHITEBOARD.md) | **Live status**: 36-layer culling map, full build history narrative, decision tree, key addresses |
 | [`status/TEST_STATUS.md`](status/TEST_STATUS.md) | Build-by-build pass/fail table, what's done, what remains |
 
 ---
@@ -69,6 +69,9 @@ Deep-dive analysis reports and experiment logs.
 | [`research/TRL_RenderDoc_Capture_Analysis.md`](research/TRL_RenderDoc_Capture_Analysis.md) | RenderDoc frame capture analysis |
 | [`research/TR7_RTX_Remix_Research.md`](research/TR7_RTX_Remix_Research.md) | TR7 engine research applicable to TRL |
 | [`research/dxvk-debug-usd-analysis-design.md`](research/dxvk-debug-usd-analysis-design.md) | DXVK debug + USD analysis design spec |
+| [`research/trl-ffp-discovery.md`](research/trl-ffp-discovery.md) | Initial FFP discovery: how proxy intercepts shader-bound draws |
+| [`research/trl-ffp-ghidra-caps-gate.md`](research/trl-ffp-ghidra-caps-gate.md) | Ghidra analysis of the CAPS gate in the FFP pipeline |
+| [`research/deep-research-report.md`](research/deep-research-report.md) | Comprehensive deep-research report on TRL engine internals |
 
 ---
 

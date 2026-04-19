@@ -2,7 +2,7 @@
 
 **Last reviewed:** 2026-04-15
 **Builds reviewed:** 001, 002, 016–033, 035–042, 044–047, 064–077 (003–015, 034, 043, 048–063 not preserved)
-**Overall status:** FAILING — stale anchor hashes in mod.usda. Replacement asset pipeline confirmed working (build 075). Cold launch stable (build 077). All 31 culling layers patched. Fresh Remix capture needed to get current building mesh hash IDs.
+**Overall status:** FAILING — stale anchor hashes in mod.usda. Replacement asset pipeline confirmed working (build 075). Cold launch stable (build 077). All 36 culling layers mapped (32 confirmed patched, 2 irrelevant, 2 unexplored). Fresh Remix capture needed to get current building mesh hash IDs.
 
 ---
 
