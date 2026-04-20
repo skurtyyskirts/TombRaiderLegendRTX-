@@ -9,7 +9,7 @@
 
 A reverse engineering project to run Tomb Raider: Legend (2006) under NVIDIA RTX Remix — full path-traced lighting, stable geometry hashes, and complete scene visibility via a custom D3D9 FFP proxy DLL.
 
-> **Build 077 — Cold launch stable.** The replacement asset pipeline is confirmed end-to-end (build 075 purple test light). All 31 culling layers patched. DrawCache use-after-free crash fixed. One step remains: fresh mesh hash capture to update `mod.usda` and unlock the stage lights.
+> **Build 077 — Cold launch stable.** The replacement asset pipeline is confirmed end-to-end (build 075 purple test light). 32 of 36 culling layers confirmed patched. DrawCache use-after-free crash fixed. One step remains: fresh mesh hash capture to update `mod.usda` and unlock the stage lights.
 
 ---
 
@@ -74,7 +74,7 @@ NvRemixLauncher32.exe
 |---|---|
 | ![Hash debug](TRL%20tests/build-075-replacement-assets-fix-FAIL-stale-hashes/screenshots/phase1-hash-center.png) | ![Clean RTX render with purple test light](TRL%20tests/build-075-replacement-assets-fix-FAIL-stale-hashes/screenshots/phase2-clean-center-purple-light.png) |
 
-*Build 075 confirmed the full pipeline end-to-end: a purple replacement light anchored to `mesh_574EDF0EAD7FC51D` appeared immediately, held stable across all 3 camera positions, and shifted correctly with camera movement. Stage lights are absent only because the 8 anchor mesh hashes in `mod.usda` were captured under an older Remix configuration.*
+*Build 075 confirmed the full pipeline end-to-end: a purple replacement light anchored to `mesh_574EDF0EAD7FC51D` appeared immediately, held stable across all 3 camera positions, and shifted correctly with camera movement. Stage lights are absent only because the anchor mesh hashes in `mod.usda` were captured under an older Remix configuration and no longer match the current draw calls.*
 
 ---
 
@@ -99,9 +99,19 @@ NvRemixLauncher32.exe
 
 Everything works. The geometry submits (2,400–3,700 draw calls/scene). The replacement asset pipeline is proven. The crash that prevented cold launches is fixed. The only thing standing between the current state and visible stage lights is **fresh mesh hashes**.
 
-`mod.usda` contains 8 anchor mesh hash IDs that were captured under an older Remix configuration (before `positions` was added to the hash rule and before the SHORT4→FLOAT3 expansion). No currently-rendered mesh matches those IDs. A single Remix capture near the Peru stage will produce the correct hashes.
+`mod.usda` contains anchor mesh hash IDs that were captured under an older Remix configuration (before `positions` was added to the hash rule and before the SHORT4→FLOAT3 expansion). No currently-rendered mesh matches those IDs. A single Remix capture near the Peru stage will produce the correct hashes.
 
 **NEXT STEP:** Launch the game, position Lara near the stage, open the Remix Toolkit hash debug view (debug view 277), capture the frame, extract the building mesh hash IDs, update `mod.usda`, re-test.
+
+**Current stale anchor hashes in `mod.usda`** (these need to be replaced with hashes from a fresh capture):
+
+| Hash | Color | Vertices |
+|------|-------|----------|
+| `mesh_2509CEDB7BB2FAFE` | Red | 365 |
+| `mesh_47AC93EAC3777CA5` | Red | 332 |
+| `mesh_DD7F8EE7F4F3969E` | Green | 315 |
+| `mesh_CE011E8D334D2E48` | Green | 312 |
+| `mesh_2AF374CD4EA62668` | Red | 298 |
 
 > **Note:** `user.conf` in the game directory overrides `rtx.conf`. The Remix developer menu regenerates this file and resets `rtx.enableReplacementAssets` to `False`. Always verify it is `True` before testing mod content.
 
@@ -178,6 +188,10 @@ python -m autopatch
 ```
 
 **Pass criteria:** Both red and green stage lights visible in all 3 clean render screenshots, lights shift position as Lara strafes, hashes stable, no crash.
+
+**Pre-test checklist:**
+- Verify `user.conf` in the game directory has `rtx.enableReplacementAssets=True` — the Remix menu resets this to `False`
+- Verify `rtx.conf` is deployed alongside the proxy DLL
 
 **Local pytest:**
 

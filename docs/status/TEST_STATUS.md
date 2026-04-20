@@ -50,7 +50,7 @@
 
 2. **FLOAT3 draws fixed (build 071b).** Nulling VS before FLOAT3 draws puts character geometry through FFP correctly. Lara visible in all recent builds.
 
-3. **All 31 patches active simultaneously, confirmed crash-free (build 074).** Deferred patch initialization eliminates the menu crash.
+3. **All patches active simultaneously, confirmed crash-free (build 074+).** Deferred patch initialization eliminates the menu crash. Build 076 added the 32nd culling patch (null-crash guard at `0x40D2AC`).
 
 ---
 

@@ -305,6 +305,16 @@ At startup (before TR7.arg was used, or on any cold manual launch), the game ren
 
 1. **Fresh Remix capture** — launch the game with the current proxy, load Peru, position Lara near the stage. Open the Remix Toolkit, enable hash debug view (debug view 277), and capture the scene. Identify the mesh hash IDs of the building geometry (the two columns/pillars that hold the red and green lights). Update `mod.usda` with the new hashes and re-test.
 
+**Stale hashes currently in `mod.usda`** — these need to be replaced after a fresh capture:
+
+| Hash | Color | Vertices |
+|------|-------|----------|
+| `mesh_2509CEDB7BB2FAFE` | Red | 365 |
+| `mesh_47AC93EAC3777CA5` | Red | 332 |
+| `mesh_DD7F8EE7F4F3969E` | Green | 315 |
+| `mesh_CE011E8D334D2E48` | Green | 312 |
+| `mesh_2AF374CD4EA62668` | Red | 298 |
+
 **What was established in builds 038-075:**
 - All 31 culling layers patched — geometry IS submitted (3749 draws/scene)
 - FLOAT3 draws fixed — Lara visible
