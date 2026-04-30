@@ -1,10 +1,14 @@
-"""Sync CHANGELOG + WHITEBOARD to Linear for TombRaiderLegendRTX."""
+"""Sync CHANGELOG to Linear for TombRaiderLegendRTX.
+
+Dedup strategy: query Linear directly before creating each issue.
+This is CI-safe — no ephemeral local cursor that gets discarded between runs.
+Syncs the most recent MAX_BUILDS build entries each run.
+"""
 import json
 import os
 import sys
 from pathlib import Path
 
-# Ensure repo root is on sys.path when invoked as `python linear/sync.py`
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _root not in sys.path:
     sys.path.insert(0, _root)
@@ -22,6 +26,7 @@ if not API_KEY:
 
 HEADERS = {"Authorization": API_KEY, "Content-Type": "application/json"}
 GQL = "https://api.linear.app/graphql"
+MAX_BUILDS = 10  # sync at most this many recent builds per run
 
 
 def gql(query: str, variables: dict | None = None) -> dict:
@@ -34,14 +39,26 @@ def gql(query: str, variables: dict | None = None) -> dict:
     return payload.get("data", {})
 
 
+def build_issue_exists(team_id: str, build_num: int) -> bool:
+    """Return True if a Linear issue already exists for this build number."""
+    q = """
+    query($f: IssueFilter!) {
+      issues(filter: $f, first: 1) { nodes { id } }
+    }"""
+    data = gql(q, {"f": {
+        "team": {"id": {"eq": team_id}},
+        "title": {"startsWith": f"Build {build_num}"},
+    }})
+    return bool(data.get("issues", {}).get("nodes"))
+
+
 def create_issue(team_id: str, title: str, description: str, label_ids: list[str]) -> str:
     q = """
     mutation($input: IssueCreateInput!) {
-      issueCreate(input: $input) { issue { id identifier } }
+      issueCreate(input: $input) { issue { identifier } }
     }"""
-    v = {"input": {"teamId": team_id, "title": title,
-                   "description": description, "labelIds": label_ids}}
-    data = gql(q, v)
+    data = gql(q, {"input": {"teamId": team_id, "title": title,
+                             "description": description, "labelIds": label_ids}})
     return data["issueCreate"]["issue"]["identifier"]
 
 
@@ -51,25 +68,27 @@ def main() -> None:
         sys.exit("Run linear/setup_linear.py first")
     config = json.loads(config_path.read_text())
     team_id = config["team_id"]
-    last_synced = config.get("last_synced_build", -1)
 
     builds = parse_changelog()
-    # Use max by build number — CHANGELOG is newest-first so [-1] would be oldest
-    latest = max(builds, key=lambda b: b["build"]) if builds else None
-
-    if latest and latest["build"] > last_synced:
-        title = f"Build {latest['build']} — {latest['result'].upper()}"
-        body = "\n".join(latest["lines"][:30])
-        issue_id = create_issue(team_id, title, body, [])
-        print(f"Created: {issue_id}")
-        config["last_synced_build"] = latest["build"]
-        config_path.write_text(json.dumps(config, indent=2))
-    elif latest:
-        print(f"Build {latest['build']} already synced, skipping.")
-    else:
+    if not builds:
         print("No builds found in changelog.")
+        return
 
-    print("Sync complete.")
+    # Sort descending, take most recent MAX_BUILDS
+    recent = sorted(builds, key=lambda b: b["build"], reverse=True)[:MAX_BUILDS]
+
+    created = skipped = 0
+    for b in reversed(recent):  # oldest-first so Linear board is ordered
+        if build_issue_exists(team_id, b["build"]):
+            skipped += 1
+            continue
+        title = f"Build {b['build']} — {b['result'].upper()}"
+        body = "\n".join(b["lines"][:30])
+        issue_id = create_issue(team_id, title, body, [])
+        print(f"Created: {issue_id} ({title})")
+        created += 1
+
+    print(f"Sync complete: {created} created, {skipped} already existed.")
 
 
 if __name__ == "__main__":
@@ -77,7 +96,6 @@ if __name__ == "__main__":
     if mode in ("--status", "status"):
         config = json.loads(Path("linear/config.json").read_text())
         print("Team:", config["team_id"])
-        print("Last synced build:", config.get("last_synced_build", "none"))
     elif mode == "research":
         print("Research mode: invoke the research-scanner Claude agent for research tasks.")
     else:
