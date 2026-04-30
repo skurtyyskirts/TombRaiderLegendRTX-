@@ -8,22 +8,34 @@ Build number is the highest in a range (077 from BUILDS-076-077).
 Non-build headings (TERRAIN-ANALYSIS, BOOTSTRAP, etc.) are skipped.
 
 Result classification rules:
-  - 'fail' is sticky: a confirmed failure cannot be downgraded by later
-    positive body text (e.g. 'visible', 'stable' in analysis prose).
+  - 'fail' is sticky: a confirmed failure cannot be downgraded by positive body text.
   - 'pass' upgrades from 'unknown' only.
+  - Negated crash phrases ('no crash', 'crash-free') are NOT treated as failures.
 """
 import re
 from pathlib import Path
 from typing import Any
 
-# Matches: ## [DATE] BUILDS-NNN  or  ## [DATE] BUILDS-NNN-MMM
 _BUILD_RE = re.compile(
     r"^##\s+\[[^\]]+\]\s+BUILDS?-(\d+)(?:-(\d+))?",
     re.IGNORECASE,
 )
 
 _PASS_WORDS = ("pass", "working", "fixed", "confirmed", "stable")
-_FAIL_WORDS = ("fail", "broken", "regression", "black screen", "crash")
+# 'crash' handled separately to exclude negated forms
+_FAIL_EXACT = ("fail", "broken", "regression", "black screen")
+_NEGATED_CRASH = ("no crash", "crash-free", "crash guard", "crash protection", "crash-proof")
+
+
+def _classify_line(low: str, current_result: str) -> str:
+    """Return updated result for this line, respecting sticky-fail."""
+    if current_result != "fail" and any(w in low for w in _PASS_WORDS):
+        current_result = "pass"
+    if any(w in low for w in _FAIL_EXACT):
+        current_result = "fail"
+    if "crash" in low and not any(neg in low for neg in _NEGATED_CRASH):
+        current_result = "fail"
+    return current_result
 
 
 def parse_changelog(path: str = "CHANGELOG.md") -> list[dict[str, Any]]:
@@ -49,11 +61,7 @@ def parse_changelog(path: str = "CHANGELOG.md") -> list[dict[str, Any]]:
             continue
         current["lines"].append(line)
         low = line.lower()
-        # fail is sticky: once set, body-text positives cannot flip it back
-        if current["result"] != "fail" and any(w in low for w in _PASS_WORDS):
-            current["result"] = "pass"
-        if any(w in low for w in _FAIL_WORDS):
-            current["result"] = "fail"
+        current["result"] = _classify_line(low, current["result"])
         if "dead end" in low or "dead-end" in low:
             current["dead_ends"].append(line.strip())
         if "blocker" in low:
