@@ -1,0 +1,21 @@
+=== DX9 Shader-to-FFP Proxy (Build 071) ===
+  Patched frustum threshold to -1e30
+  NOPed cull jumps: 0x4072BD 0x4072D2 0x407AF1 0x407B30 0x407B49 0x407B62 0x407B7B
+  Patched cull mode globals to D3DCULL_NONE
+  Patched Light_VisibilityTest to always TRUE (0x60B050)
+  NOPed terrain cull gate at 0x0040AE3E
+  Patched MeshSubmit_VisibilityGate to always return 0 (0x454AB0)
+  NOPed sector bitmask gate at 0x0040E30F
+  NOPed post-sector distance cull at 0x0040E3B0
+  Patched RenderQueue_FrustumCull: JMP to uncull path (0x40C430 -> 0x40C390)
+  Patched null-crash guard at 0x40D2AC
+DrawCache: replayed 3 culled draws
+S748
+ d=2847
+ s4=0
+ f3=364
+  passthrough=0
+  xformBlocked=0
+FrameCpuMs=6.8
+FrameCpuMs=7.1
+FrameCpuMs=6.5

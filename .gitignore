@@ -98,6 +98,8 @@ TRL traces/**/*.jsonl
 
 # Runtime proxy/tracer logs in test builds and traces
 TRL tests/**/ffp_proxy.log
+# Keep the build-071 fixture log — it is a test fixture for test_proxy_log_parsing.py
+!TRL tests/build-071-hash-stability-FAIL-lights-missing/ffp_proxy.log
 TRL traces/**/*.log
 
 # Game checkpoint files (binary, machine-specific)
