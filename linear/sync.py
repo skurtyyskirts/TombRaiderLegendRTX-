@@ -26,7 +26,7 @@ if not API_KEY:
 
 HEADERS = {"Authorization": API_KEY, "Content-Type": "application/json"}
 GQL = "https://api.linear.app/graphql"
-MAX_BUILDS = 10  # sync at most this many recent builds per run
+MAX_BUILDS = 10
 
 
 def gql(query: str, variables: dict | None = None) -> dict:
@@ -39,15 +39,19 @@ def gql(query: str, variables: dict | None = None) -> dict:
     return payload.get("data", {})
 
 
-def build_issue_exists(team_id: str, build_num: int) -> bool:
-    """Return True if a Linear issue already exists for this build number."""
+def issue_exists(team_id: str, title_prefix: str) -> bool:
+    """True if a Linear issue title starts with title_prefix (exact token boundary).
+
+    The prefix must include a trailing space so that e.g. 'Build 7 ' does not
+    match 'Build 70 — ...' or 'Build 77 — ...'.
+    """
     q = """
     query($f: IssueFilter!) {
       issues(filter: $f, first: 1) { nodes { id } }
     }"""
     data = gql(q, {"f": {
         "team": {"id": {"eq": team_id}},
-        "title": {"startsWith": f"Build {build_num}"},
+        "title": {"startsWith": title_prefix},
     }})
     return bool(data.get("issues", {}).get("nodes"))
 
@@ -74,12 +78,12 @@ def main() -> None:
         print("No builds found in changelog.")
         return
 
-    # Sort descending, take most recent MAX_BUILDS
     recent = sorted(builds, key=lambda b: b["build"], reverse=True)[:MAX_BUILDS]
-
     created = skipped = 0
-    for b in reversed(recent):  # oldest-first so Linear board is ordered
-        if build_issue_exists(team_id, b["build"]):
+    for b in reversed(recent):
+        # Trailing space ensures 'Build 7 ' won't match 'Build 70 — ...' or 'Build 77 — ...'
+        prefix = f"Build {b['build']} "
+        if issue_exists(team_id, prefix):
             skipped += 1
             continue
         title = f"Build {b['build']} — {b['result'].upper()}"

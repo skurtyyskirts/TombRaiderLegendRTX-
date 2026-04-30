@@ -1,4 +1,12 @@
-"""One-time setup: creates Linear team, projects, labels, milestones for TombRaiderLegendRTX."""
+"""One-time setup: writes linear/config.json for TombRaiderLegendRTX.
+
+Usage:
+    export LINEAR_API_KEY="lin_api_xxxx"
+    python linear/setup_linear.py --team-id <team-id>
+
+Run without --team-id to list all available teams and their IDs.
+"""
+import argparse
 import json
 import os
 import sys
@@ -27,46 +35,32 @@ def gql(query: str, variables: dict | None = None) -> dict:
     return data["data"]
 
 
-MILESTONES = [
-    "Infrastructure",
-    "Geometry Visible",
-    "Hash Stability",
-    "Visual Quality",
-    "Stable Release",
-]
-
-LABELS = [
-    ("proxy-code", "#6366f1"),
-    ("config", "#8b5cf6"),
-    ("static-analysis", "#06b6d4"),
-    ("hash-stability", "#f59e0b"),
-    ("culling", "#ef4444"),
-    ("sky-water", "#3b82f6"),
-    ("upstream", "#10b981"),
-    ("auto-idea", "#a78bfa"),
-    ("dead-end", "#6b7280"),
-    ("blocker", "#dc2626"),
-]
-
-
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Set up Linear config for TombRaiderLegendRTX")
+    parser.add_argument("--team-id", help="Exact Linear team ID to use")
+    args = parser.parse_args()
+
     me = gql("{ viewer { id name } }")
     print(f"Authenticated as: {me['viewer']['name']}")
 
-    teams = gql("{ teams { nodes { id name } } }")
-    team = next(
-        (t for t in teams["teams"]["nodes"]
-         if "legend" in t["name"].lower() or "trl" in t["name"].lower()),
-        None,
-    )
+    teams_data = gql("{ teams { nodes { id name } } }")
+    teams = teams_data["teams"]["nodes"]
+
+    if not args.team_id:
+        print("\nAvailable teams (pass --team-id to select one):")
+        for t in teams:
+            print(f"  {t['id']}  {t['name']}")
+        sys.exit(0)
+
+    team = next((t for t in teams if t["id"] == args.team_id), None)
     if not team:
-        print("Available teams:", [t["name"] for t in teams["teams"]["nodes"]])
-        sys.exit("No TRL team found. Create it in Linear first.")
+        print(f"Team ID '{args.team_id}' not found. Available teams:")
+        for t in teams:
+            print(f"  {t['id']}  {t['name']}")
+        sys.exit(1)
 
-    team_id = team["id"]
-    print(f"Team: {team['name']} ({team_id})")
-
-    config = {"team_id": team_id, "milestones": {}, "labels": {}}
+    print(f"Using team: {team['name']} ({team['id']})")
+    config = {"team_id": team["id"], "team_name": team["name"]}
     Path("linear/config.json").write_text(json.dumps(config, indent=2))
     print("linear/config.json written. Run linear/sync.py to push first sync.")
 
