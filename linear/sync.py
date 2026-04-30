@@ -1,8 +1,15 @@
-"""Sync CHANGELOG + WHITEBOARD state to Linear issues for TombRaiderLegendRTX."""
+"""Sync CHANGELOG + WHITEBOARD to Linear for TombRaiderLegendRTX."""
 import json
 import os
 import sys
 from pathlib import Path
+
+# Ensure repo root is on sys.path when invoked as `python linear/sync.py`
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
+from linear.parse_changelog import parse_changelog  # noqa: E402
 
 try:
     import requests
@@ -42,7 +49,6 @@ def main() -> None:
     config = json.loads(config_path.read_text())
     team_id = config["team_id"]
 
-    from linear.parse_changelog import parse_changelog
     builds = parse_changelog()
     last_build = builds[-1] if builds else None
 
@@ -57,7 +63,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "sync"
-    if mode == "--status":
+    if mode in ("--status", "status"):
         config = json.loads(Path("linear/config.json").read_text())
         print("Team:", config["team_id"])
     else:
