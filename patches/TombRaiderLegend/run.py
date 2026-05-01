@@ -28,6 +28,11 @@ from config import (
     PROXY_LOG,
 )
 from patches.TombRaiderLegend import launcher as stable_launcher
+
+def count_capture_markers(sequence: list[str]) -> int:
+    """Count the number of capture start markers in a macro sequence."""
+    return sum(1 for step in sequence if step.startswith("capture"))
+
 SCREENSHOTS_DIR = SCRIPT_DIR / "screenshots"
 NIGHTLY_MOD_FILE = GAME_DIR / "rtx-remix" / "mods" / "trl-nightly" / "mod.usda"
 DEFAULT_LAUNCH_CHAPTER = 2
