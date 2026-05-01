@@ -35,6 +35,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytest
       - name: Run TRL nightly tests
+        env:
+          PYTHONPATH: .
         run: pytest tests_trl/ -v --tb=short --basetemp "$env:RUNNER_TEMP\\pytest-trl-nightly"
 
   # Authoritative TRL proxy DLL build verification (MSVC x86, no CRT)
