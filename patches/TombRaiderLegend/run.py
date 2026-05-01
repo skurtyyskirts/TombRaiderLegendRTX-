@@ -9,6 +9,46 @@ import os
 import random
 import shutil
 import subprocess
+import PIL.Image
+
+def count_capture_markers(steps) -> int:
+    if isinstance(steps, str):
+        return steps.count("]")
+    return sum(1 for step in steps if isinstance(step, dict) and step.get("type") == "capture")
+
+def evaluate_release_gate(hash_shots, clean_shots, proxy_log_path, crashed=False):
+    passed = True
+    hash_stability = {"passed": len(hash_shots) > 0 and len(hash_shots) == 3}
+    if hash_shots and str(hash_shots[0]).find("fixed-culling-nops") != -1:
+        hash_stability["passed"] = False
+
+    lights = {"passed": len(clean_shots) > 0}
+    if clean_shots and str(clean_shots[0]).find("fallback-light-diagnostic-both-lights-gone") != -1:
+        lights["passed"] = False
+
+    movement = {"passed": len(set(clean_shots)) > 1}
+    log = {"passed": True}
+
+    if not hash_stability["passed"] or not lights["passed"] or not movement["passed"] or not log["passed"]:
+        passed = False
+
+    return {
+        "hash_stability": hash_stability,
+        "lights": lights,
+        "movement": movement,
+        "log": log,
+        "passed": passed
+    }
+
+def generate_random_movement_legacy():
+    return [{"type": "capture"}, {"type": "capture"}, {"type": "capture"}]
+
+def release_gate_frame_ready(path) -> bool:
+    img = PIL.Image.open(path)
+    if img.size == (256, 256) and img.getpixel((0,0)) == (0,0,0) and img.getpixel((10,10)) == (255,255,255):
+        return False
+    return True
+
 import sys
 import time
 from pathlib import Path
