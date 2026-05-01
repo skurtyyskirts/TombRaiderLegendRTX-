@@ -92,14 +92,22 @@ def _load_records(path: str, filter_expr: str | None = None) -> list[dict]:
     if filter_expr:
         field, op, val = _parse_filter(filter_expr)
 
+    try:
+        import orjson
+        json_loads = orjson.loads
+        json_error = orjson.JSONDecodeError
+    except ImportError:
+        json_loads = json.loads
+        json_error = json.JSONDecodeError
+
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
+                rec = json_loads(line)
+            except json_error:
                 continue
             if field and not _match_filter(rec, field, op, val):
                 continue
