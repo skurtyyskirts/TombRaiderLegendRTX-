@@ -234,15 +234,18 @@ def _show_intervals_range(records: list[dict], range_str: str) -> str:
 
 
 def _compare_intervals(records: list[dict], a: int, b: int) -> str:
-    sa = [r for r in records if r.get("interval") == a]
-    sb = [r for r in records if r.get("interval") == b]
-
     ca: Counter = Counter()
     cb: Counter = Counter()
-    for r in sa:
-        ca[r.get("addr", "?")] += 1
-    for r in sb:
-        cb[r.get("addr", "?")] += 1
+    sa_len = 0
+    sb_len = 0
+    for r in records:
+        interval = r.get("interval")
+        if interval == a:
+            ca[r.get("addr", "?")] += 1
+            sa_len += 1
+        if interval == b:
+            cb[r.get("addr", "?")] += 1
+            sb_len += 1
 
     all_addrs = sorted(set(ca.keys()) | set(cb.keys()))
     lines = [f"Compare interval {a} vs {b}", ""]
@@ -254,7 +257,7 @@ def _compare_intervals(records: list[dict], a: int, b: int) -> str:
         sign = "+" if delta > 0 else ""
         lines.append(f"  {addr:<20s}  {va:>10d}  {vb:>10d}  {sign}{delta:>9d}")
     lines.append("")
-    lines.append(f"  Total: {len(sa)} vs {len(sb)} records")
+    lines.append(f"  Total: {sa_len} vs {sb_len} records")
     return "\n".join(lines)
 
 
