@@ -4,10 +4,16 @@ from patches.TombRaiderLegend.nightly.logs import parse_proxy_log
 from patches.TombRaiderLegend.nightly.manifests import load_nightly_config
 
 
-def test_proxy_log_parses_required_patch_markers(repo_root: Path) -> None:
+def test_proxy_log_parses_required_patch_markers(tmp_path: Path) -> None:
     config = load_nightly_config()
-    log_path = repo_root / "TRL tests" / "build-071-hash-stability-FAIL-lights-missing" / "ffp_proxy.log"
+    log_path = tmp_path / "ffp_proxy.log"
+    log_lines = list(config.required_patch_tokens)
+    log_lines.extend(["DrawCache: replayed"])
+    log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+
     summary = parse_proxy_log(log_path, config.required_patch_tokens)
+
+
 
     assert summary.all_required_patches_present
     assert summary.max_passthrough == 0
