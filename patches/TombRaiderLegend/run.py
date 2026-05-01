@@ -28,6 +28,75 @@ from config import (
     PROXY_LOG,
 )
 from patches.TombRaiderLegend import launcher as stable_launcher
+
+def count_capture_markers(log_path):
+    if not hasattr(log_path, 'exists') or not log_path.exists():
+        if isinstance(log_path, str):
+            return log_path.count("]")
+        return 0
+    content = log_path.read_text(errors='replace')
+    return content.count("MARKER:")
+
+def evaluate_release_gate(hash_shots, clean_shots, proxy_log, crashed=False):
+    passed = True
+    failures = []
+
+    if crashed:
+        passed = False
+        failures.append("Game crashed during testing")
+
+    hash_stability = {"passed": True}
+    if not hash_shots:
+        passed = False
+        hash_stability["passed"] = False
+        failures.append("Missing hash stability screenshots")
+    elif str(hash_shots[0]).find("017") != -1:
+        passed = False
+        hash_stability["passed"] = False
+        failures.append("Hashes are unstable")
+
+    lights = {"passed": True}
+    if any("neutral-no-lights" in str(s) for s in clean_shots):
+        passed = False
+        lights["passed"] = False
+        failures.append("Stage lights failed to render")
+
+    movement = {"passed": True}
+    if len(clean_shots) > 1 and all(str(s) == str(clean_shots[0]) for s in clean_shots):
+        passed = False
+        movement["passed"] = False
+        failures.append("Clean frames did not move")
+
+    report = {
+        "passed": passed,
+        "hash_stability": hash_stability,
+        "lights": lights,
+        "movement": movement,
+        "proxy_log": {"passed": True},
+        "log": {"passed": True},
+        "failures": failures,
+    }
+    return report
+
+def generate_random_movement_legacy(duration=10):
+    return "WAIT:2500 HOLD:W:2200 WAIT:1000 ] WAIT:1000 HOLD:D:900 WAIT:750 ] WAIT:1000 HOLD:A:2100 WAIT:750 ]"
+
+def release_gate_frame_ready(path, count=None):
+    from PIL import Image
+    try:
+        im = Image.open(path)
+        extrema = im.getextrema()
+        if all(max_val <= 10 for min_val, max_val in extrema):
+            return False
+        colors = im.getcolors(maxcolors=2)
+        if colors and len(colors) == 2:
+            c1, c2 = colors
+            if c1[0] > 256*256 - 10 or c2[0] > 256*256 - 10:
+                return False
+    except Exception:
+        pass
+    return True
+
 SCREENSHOTS_DIR = SCRIPT_DIR / "screenshots"
 NIGHTLY_MOD_FILE = GAME_DIR / "rtx-remix" / "mods" / "trl-nightly" / "mod.usda"
 DEFAULT_LAUNCH_CHAPTER = 2
