@@ -318,7 +318,7 @@ class TestBackwardSliceCfg:
 
         # Block 0 (0x401000): mov eax, 5; jmp block1
         # Block 1 (0x401007): add eax, 3; ret
-        # Slice eax at the add — should find both mov and add.
+        # Slice eax at the add -- should find both mov and add.
         code = (
             b"\xB8\x05\x00\x00\x00"  # mov eax, 5
             b"\xEB\x00"              # jmp +0 -> 0x401007
@@ -353,7 +353,7 @@ class TestBackwardSliceCfg:
         # Block 0 (0x401000): mov eax, 5; cmp ecx, 0; je block2
         # Block 1 (0x40100A): mov eax, 10  (fall-through into block2)
         # Block 2 (0x40100F): ret
-        # Slice eax at ret — should find mov eax,5 AND mov eax,10.
+        # Slice eax at ret -- should find mov eax,5 AND mov eax,10.
         code = (
             b"\xB8\x05\x00\x00\x00"  # mov eax, 5
             b"\x83\xF9\x00"          # cmp ecx, 0
