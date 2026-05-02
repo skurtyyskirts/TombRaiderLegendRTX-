@@ -87,9 +87,9 @@ jobs:
                   // Update existing Linear issue
                   const updateResp = await makeLinearRequest(`
                     mutation {
-                      issueUpdate(id: "\${existing.id}", input: {
-                        title: "\${escapeGraphQL(title)}",
-                        description: "\${escapeGraphQL(description)}"
+                      issueUpdate(id: "${existing.id}", input: {
+                        title: "${escapeGraphQL(title)}",
+                        description: "${escapeGraphQL(description)}"
                       }) {
                         issue {
                           id
@@ -110,9 +110,9 @@ jobs:
                   const createResp = await makeLinearRequest(`
                     mutation {
                       issueCreate(input: {
-                        teamId: "\${teamId}",
-                        title: "\${escapeGraphQL(title)}",
-                        description: "\${escapeGraphQL(description)}"
+                        teamId: "${teamId}",
+                        title: "${escapeGraphQL(title)}",
+                        description: "${escapeGraphQL(description)}"
                       }) {
                         issue {
                           id
