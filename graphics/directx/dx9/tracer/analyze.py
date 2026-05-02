@@ -7,12 +7,19 @@ call graph building, and more.
 """
 from __future__ import annotations
 
+
 import argparse
 import csv
 import json
 import math
 import subprocess
 import sys
+
+try:
+    import orjson
+    HAS_ORJSON = True
+except ImportError:
+    HAS_ORJSON = False
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -33,7 +40,7 @@ from .d3d9_methods import (
 )
 
 
-# ── Data loading ────────────────────────────────────────────────────────────
+# ── Data loading ──────────────────────────────────────────────────────────────────────
 
 def load_records(path: str, filt: str | None = None) -> list[dict]:
     records = []
@@ -41,15 +48,20 @@ def load_records(path: str, filt: str | None = None) -> list[dict]:
     if filt:
         field, op, val = _parse_filter(filt)
 
+    _loads = orjson.loads if HAS_ORJSON else json.loads
+    _JSONDecodeError = orjson.JSONDecodeError if HAS_ORJSON else json.JSONDecodeError
+
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
+
             try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
+                rec = _loads(line)
+            except _JSONDecodeError:
                 continue
+
             if field and not _match_filter(rec, field, op, val):
                 continue
             records.append(rec)
@@ -110,7 +122,7 @@ def _match_filter(rec: dict, field: str, op: str, val: Any) -> bool:
     return False
 
 
-# ── Address resolver ────────────────────────────────────────────────────────
+# ── Address resolver ────────────────────────────────────────────────────────────────────
 
 class AddressResolver:
     def __init__(self, binary: str | None):
@@ -144,7 +156,7 @@ class AddressResolver:
             self.resolve(a)
 
 
-# ── Matrix classifier ───────────────────────────────────────────────────────
+# ── Matrix classifier ─────────────────────────────────────────────────────────────────────
 
 def classify_matrix(floats: list[float]) -> str:
     if len(floats) != MATRIX_FLOAT_COUNT:
@@ -208,7 +220,7 @@ def format_matrix_4x4(floats: list[float]) -> str:
     return "\n".join(lines)
 
 
-# ── Render state formatting ─────────────────────────────────────────────────
+# ── Render state formatting ──────────────────────────────────────────────────────────────────
 
 def _fmt_rs(state_id: int, value: int) -> str:
     """Format a render state value with human-readable enum names."""
@@ -228,7 +240,7 @@ def _fmt_rs(state_id: int, value: int) -> str:
     return f"{name} = {value} (0x{value:X})"
 
 
-# ── State tracker ───────────────────────────────────────────────────────────
+# ── State tracker ───────────────────────────────────────────────────────────────────────
 
 class DeviceState:
     def __init__(self):
@@ -341,7 +353,7 @@ def _int(val) -> int:
     return 0
 
 
-# ── Analysis commands ───────────────────────────────────────────────────────
+# ── Analysis commands ────────────────────────────────────────────────────────────────────
 
 def do_summary(records: list[dict]) -> None:
     frames = set()
@@ -501,7 +513,8 @@ def do_matrix_flow(records: list[dict], resolver: AddressResolver) -> None:
                 print(f"    First values: {u['constants'][:8]}")
 
 
-def do_render_passes(runtime: list[dict]) -> None:
+def do_render_passes(records: list[dict]) -> None:
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
     passes = []
     current_pass: dict[str, Any] = {
         "rt": "default", "draws": 0, "shaders": set(),
@@ -576,7 +589,8 @@ def _fmt_clear_flags(flags: int) -> str:
     return "|".join(parts)
 
 
-def do_draw_calls(runtime: list[dict], resolver: AddressResolver) -> None:
+def do_draw_calls(records: list[dict], resolver: AddressResolver) -> None:
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
     state = DeviceState()
     prev_snap: dict = {}
     draw_idx = 0
@@ -616,7 +630,8 @@ def do_draw_calls(runtime: list[dict], resolver: AddressResolver) -> None:
     print(f"\n  Total draws: {draw_idx}")
 
 
-def do_classify_draws(runtime: list[dict]) -> None:
+def do_classify_draws(records: list[dict]) -> None:
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
     state = DeviceState()
     tags_count: Counter = Counter()
     method_count: Counter = Counter()
@@ -682,7 +697,8 @@ def do_classify_draws(runtime: list[dict]) -> None:
         print(f"    {vs:18s}  {count:5d}")
 
 
-def do_redundant(runtime: list[dict]) -> None:
+def do_redundant(records: list[dict]) -> None:
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
     last_state: dict[tuple, Any] = {}
     redundant: Counter = Counter()
     total_sets = 0
@@ -955,7 +971,7 @@ def _extract_register_usage(asm_text: str) -> dict[str, list[str]]:
     return result
 
 
-# ── Constant provenance ──────────────────────────────────────────────────────
+# ── Constant provenance ───────────────────────────────────────────────────────────────────────
 
 def _parse_ctab_registers(disasm_text: str) -> dict[str, int]:
     """Parse CTAB register table from D3DX disassembly.
@@ -982,7 +998,7 @@ def _parse_ctab_registers(disasm_text: str) -> dict[str, int]:
     return mapping
 
 
-def do_const_provenance(records: list[dict], runtime: list[dict], draw_index: int | None) -> None:
+def do_const_provenance(records: list[dict], draw_index: int | None) -> None:
     """For each draw, show which seq# last wrote each constant register.
 
     If draw_index is given, show detailed provenance for that single draw.
@@ -1006,6 +1022,7 @@ def do_const_provenance(records: list[dict], runtime: list[dict], draw_index: in
     ps_prov: dict[int, tuple[int, list[float]]] = {}
     state = DeviceState()
     draw_num = 0
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
 
     print(f"\n=== Constant Provenance ===")
 
@@ -1108,7 +1125,7 @@ def _print_draw_provenance_compact(
         print(f"  Draw #{draw_num:4d} (seq {seq:6d})  VS:[{vs_str}]  PS:[{ps_str}]")
 
 
-def do_vtx_formats(records: list[dict], runtime: list[dict]) -> None:
+def do_vtx_formats(records: list[dict]) -> None:
     init_decls: dict[str, list[dict]] = {}
     for r in records:
         if r["slot"] == SLOT["CreateVertexDeclaration"]:
@@ -1117,6 +1134,8 @@ def do_vtx_formats(records: list[dict], runtime: list[dict]) -> None:
             handle = r.get("created_handle")
             if elements and handle:
                 init_decls[handle] = elements
+
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
     state = DeviceState()
     decl_draws: defaultdict[str, int] = defaultdict(int)
 
@@ -1141,7 +1160,8 @@ def do_vtx_formats(records: list[dict], runtime: list[dict]) -> None:
             print(f"    (elements not captured in init phase)")
 
 
-def do_diff_draws(runtime: list[dict], seq_a: int, seq_b: int) -> None:
+def do_diff_draws(records: list[dict], seq_a: int, seq_b: int) -> None:
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
     state = DeviceState()
     snap_a: dict = {}
     snap_b: dict = {}
@@ -1288,7 +1308,8 @@ def do_animate_constants(records: list[dict]) -> None:
             print(f"      {per_object_regs[:20]}")
 
 
-def do_pipeline_diagram(runtime: list[dict]) -> None:
+def do_pipeline_diagram(records: list[dict]) -> None:
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
 
     passes = []
     current_rt = "backbuffer"
@@ -1375,13 +1396,15 @@ def _parse_reg_range(spec: str) -> tuple[str, int, int]:
     return prefix, int(body), int(body)
 
 
-def do_const_evolution(runtime: list[dict], range_spec: str) -> None:
+def do_const_evolution(records: list[dict], range_spec: str) -> None:
     """Track how specific constant registers change across draws in a frame."""
     prefix, reg_lo, reg_hi = _parse_reg_range(range_spec)
     is_vs = prefix == "vs"
     label = "VS" if is_vs else "PS"
     set_slot = SLOT["SetVertexShaderConstantF"] if is_vs else SLOT["SetPixelShaderConstantF"]
     reg_count = reg_hi - reg_lo + 1
+
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
     consts: dict[int, list[float]] = {}
     per_draw: list[dict[int, list[float]]] = []
     draw_seqs: list[int] = []
@@ -1513,7 +1536,7 @@ def _const_evolution_rotation_analysis(
             print(f"       Objects in this group have identity World rotation (axis-aligned geometry).")
 
 
-def do_state_snapshot(records: list[dict], runtime: list[dict], draw_index: int) -> None:
+def do_state_snapshot(records: list[dict], draw_index: int) -> None:
     """Full D3D9 state dump at a specific draw call index."""
     shader_disasm: dict[str, str] = {}
     handle_to_hash: dict[str, str] = {}
@@ -1537,6 +1560,8 @@ def do_state_snapshot(records: list[dict], runtime: list[dict], draw_index: int)
             handle = r.get("created_handle")
             if elements and handle:
                 init_decls[handle] = elements
+
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
     state = DeviceState()
     draw_num = 0
     draw_rec = None
@@ -1672,8 +1697,9 @@ def do_state_snapshot(records: list[dict], runtime: list[dict], draw_index: int)
             print(f"    Stage[{stage}]: {dict(states)}")
 
 
-def do_transform_calls(records: list[dict], runtime: list[dict]) -> None:
+def do_transform_calls(records: list[dict]) -> None:
     """Analyze all SetTransform, SetViewport, SetRenderTarget calls."""
+    runtime = [r for r in records if r.get("frame", -1) >= 0]
     draw_count = 0
     svcf_count = 0
     transform_calls = []
@@ -1809,7 +1835,7 @@ def do_export_csv(records: list[dict], output: str) -> None:
     print(f"Exported {len(records)} records to {output}")
 
 
-# ── Main dispatch ───────────────────────────────────────────────────────────
+# ── Main dispatch ──────────────────────────────────────────────────────────────────────
 
 def run_analysis(args: argparse.Namespace) -> None:
     if not Path(args.file).exists():
@@ -1819,8 +1845,6 @@ def run_analysis(args: argparse.Namespace) -> None:
     print(f"Loading {args.file}...")
     records = load_records(args.file, args.filter)
     print(f"  Loaded {len(records)} records")
-
-    runtime = [r for r in records if r.get("frame", -1) >= 0]
 
     resolver = AddressResolver(args.resolve_addrs)
     if args.resolve_addrs:
@@ -1847,16 +1871,16 @@ def run_analysis(args: argparse.Namespace) -> None:
         do_matrix_flow(records, resolver)
         ran_any = True
     if args.render_passes:
-        do_render_passes(runtime)
+        do_render_passes(records)
         ran_any = True
     if args.draw_calls:
-        do_draw_calls(runtime, resolver)
+        do_draw_calls(records, resolver)
         ran_any = True
     if args.classify_draws:
-        do_classify_draws(runtime)
+        do_classify_draws(records)
         ran_any = True
     if args.redundant:
-        do_redundant(runtime)
+        do_redundant(records)
         ran_any = True
     if args.texture_freq:
         do_texture_freq(records)
@@ -1868,31 +1892,31 @@ def run_analysis(args: argparse.Namespace) -> None:
         do_shader_map(records, args.fxc)
         ran_any = True
     if args.vtx_formats:
-        do_vtx_formats(records, runtime)
+        do_vtx_formats(records)
         ran_any = True
     if args.diff_draws:
-        do_diff_draws(runtime, args.diff_draws[0], args.diff_draws[1])
+        do_diff_draws(records, args.diff_draws[0], args.diff_draws[1])
         ran_any = True
     if args.diff_frames:
         do_diff_frames(records, args.diff_frames[0], args.diff_frames[1])
         ran_any = True
     if args.const_provenance or args.const_provenance_draw is not None:
-        do_const_provenance(records, runtime, args.const_provenance_draw)
+        do_const_provenance(records, args.const_provenance_draw)
         ran_any = True
     if args.const_evolution:
-        do_const_evolution(runtime, args.const_evolution)
+        do_const_evolution(records, args.const_evolution)
         ran_any = True
     if args.state_snapshot is not None:
-        do_state_snapshot(records, runtime, args.state_snapshot)
+        do_state_snapshot(records, args.state_snapshot)
         ran_any = True
     if args.transform_calls:
-        do_transform_calls(records, runtime)
+        do_transform_calls(records)
         ran_any = True
     if args.animate_constants:
         do_animate_constants(records)
         ran_any = True
     if args.pipeline_diagram:
-        do_pipeline_diagram(runtime)
+        do_pipeline_diagram(records)
         ran_any = True
     if args.export_csv:
         do_export_csv(records, args.export_csv)
