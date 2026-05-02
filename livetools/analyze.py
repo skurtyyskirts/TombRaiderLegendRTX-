@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 
-# ── field path resolution ──────────────────────────────────────────────────
+# ── field path resolution ────────────────────────────────────────────────────────
 
 def _resolve_field(record: dict, path: str) -> Any:
     """Resolve a dot-separated field path with optional array indices.
@@ -45,7 +45,7 @@ def _resolve_field(record: dict, path: str) -> Any:
     return cur
 
 
-# ── filter parsing ─────────────────────────────────────────────────────────
+# ── filter parsing ─────────────────────────────────────────────────────────────
 
 def _parse_filter(expr: str):
     """Parse "field==value" / "field!=value" / "field>value" etc."""
@@ -84,7 +84,7 @@ def _match_filter(record: dict, field: str, op: str, val: Any) -> bool:
     return str(rv) == str(val) if op == "==" else str(rv) != str(val)
 
 
-# ── JSONL reader ───────────────────────────────────────────────────────────
+# ── JSONL reader ─────────────────────────────────────────────────────────────────
 
 def _load_records(path: str, filter_expr: str | None = None) -> list[dict]:
     records = []
@@ -92,14 +92,22 @@ def _load_records(path: str, filter_expr: str | None = None) -> list[dict]:
     if filter_expr:
         field, op, val = _parse_filter(filter_expr)
 
+    try:
+        import orjson
+        json_loads = orjson.loads
+        json_error = orjson.JSONDecodeError
+    except ImportError:
+        json_loads = json.loads
+        json_error = json.JSONDecodeError
+
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
+                rec = json_loads(line)
+            except json_error:
                 continue
             if field and not _match_filter(rec, field, op, val):
                 continue
@@ -107,7 +115,7 @@ def _load_records(path: str, filter_expr: str | None = None) -> list[dict]:
     return records
 
 
-# ── analysis operations ────────────────────────────────────────────────────
+# ── analysis operations ────────────────────────────────────────────────────────
 
 def _summary(records: list[dict]) -> str:
     lines = []
@@ -341,7 +349,7 @@ def _flatten(d: dict, prefix: str = "") -> dict:
     return out
 
 
-# ── entry point ────────────────────────────────────────────────────────────
+# ── entry point ──────────────────────────────────────────────────────────────────
 
 def run_analyze(args) -> None:
     fpath = args.file

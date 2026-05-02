@@ -14,9 +14,9 @@ jobs:
       matrix:
         python-version: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.4.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
@@ -29,13 +29,13 @@ jobs:
   test-trl-nightly:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.4.0
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest
+        run: pip install -r requirements-trl-nightly.txt pytest
       - name: Run TRL nightly tests
         env:
           PYTHONPATH: .
@@ -45,7 +45,7 @@ jobs:
   build-trl-proxy:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
       - name: Build authoritative TRL proxy DLL
         working-directory: patches/TombRaiderLegend/proxy
         shell: cmd
