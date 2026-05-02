@@ -326,3 +326,195 @@ class TestCLI:
         from bootstrap import main
         with pytest.raises(SystemExit):
             main([])
+
+class TestBootstrapOrchestrator:
+    def test_full_bootstrap_mock(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        from bootstrap import bootstrap
+        import os
+
+        with patch("bootstrap.pefile.PE") as mock_pe, \
+             patch("bootstrap.Binary") as mock_binary, \
+             patch("bootstrap._is_packed", return_value=False), \
+             patch("bootstrap._read_existing_addresses", return_value=set()), \
+             patch("bootstrap._detect_compiler", return_value={"compiler": "msvc", "confidence": 0.9}), \
+             patch("bootstrap._scan_signatures", return_value=({0x1000: MagicMock(name="mock_sig")}, ["@ 0x1000 sig;"])), \
+             patch("bootstrap._scan_rtti", return_value=(1, ["@ 0x1010 rtti;"])), \
+             patch("bootstrap._analyze_imports", return_value=[MagicMock()]), \
+             patch("bootstrap._seed_strings", return_value=(1, ["@ 0x1020 str;"])), \
+             patch("bootstrap._propagate_labels", return_value=["@ 0x1030 prop;"]), \
+             patch("bootstrap._write_kb_entries", return_value=4) as mock_write, \
+             patch("bootstrap.os.path.isfile", return_value=True):
+
+             mock_bin_instance = mock_binary.return_value
+             mock_bin_instance.func_table = [0x1000, 0x1010]
+
+             # Mock imports directory
+             import_entry = MagicMock()
+             imp = MagicMock()
+             imp.name = b"malloc"
+             imp.address = 0x2000
+             import_entry.imports = [imp]
+             mock_bin_instance.pe.DIRECTORY_ENTRY_IMPORT = [import_entry]
+
+             result = bootstrap("dummy.exe", str(tmp_path), db_path="dummy.db")
+
+             assert result["packed"] is False
+             assert result["compiler"] == "msvc"
+             assert result["sigdb_matches"] == 1
+             assert result["rtti_classes"] == 1
+             assert result["strings_seeded"] == 1
+             assert result["propagated"] == 1
+             assert result["functions_identified"] == 4
+
+             mock_write.assert_called_once()
+             assert "bootstrap_report.txt" in os.listdir(tmp_path)
+
+    def test_bootstrap_download_db_failure(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        from bootstrap import bootstrap
+        import os
+        import sys
+
+        with patch("bootstrap.pefile.PE"), \
+             patch("bootstrap.Binary"), \
+             patch("bootstrap._is_packed", return_value=False), \
+             patch("bootstrap._read_existing_addresses", return_value=set()), \
+             patch("bootstrap._detect_compiler", return_value={"compiler": "unknown", "confidence": 0.0}), \
+             patch("bootstrap._scan_signatures", return_value=({}, [])), \
+             patch("bootstrap._scan_rtti", return_value=(0, [])), \
+             patch("bootstrap._analyze_imports", return_value=[]), \
+             patch("bootstrap._seed_strings", return_value=(0, [])), \
+             patch("bootstrap._propagate_labels", return_value=[]), \
+             patch("bootstrap._write_kb_entries", return_value=0), \
+             patch("bootstrap.os.path.isfile", side_effect=lambda x: False if x.endswith(".db") else True), \
+             patch("sigdb._download_file", side_effect=Exception("Network error")), \
+             patch("bootstrap.sys.stderr", new_callable=MagicMock) as mock_stderr:
+
+             result = bootstrap("dummy.exe", str(tmp_path), db_path=None)
+
+             assert result["packed"] is False
+             assert result["compiler"] == "unknown"
+             mock_stderr.write.assert_any_call("Could not download signature DB: Network error")
+
+    def test_bootstrap_download_db_success(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        from bootstrap import bootstrap
+
+        with patch("bootstrap.pefile.PE"), \
+             patch("bootstrap.Binary"), \
+             patch("bootstrap._is_packed", return_value=False), \
+             patch("bootstrap._read_existing_addresses", return_value=set()), \
+             patch("bootstrap._detect_compiler", return_value={"compiler": "unknown", "confidence": 0.0}), \
+             patch("bootstrap._scan_signatures", return_value=({}, [])), \
+             patch("bootstrap._scan_rtti", return_value=(0, [])), \
+             patch("bootstrap._analyze_imports", return_value=[]), \
+             patch("bootstrap._seed_strings", return_value=(0, [])), \
+             patch("bootstrap._propagate_labels", return_value=[]), \
+             patch("bootstrap._write_kb_entries", return_value=0), \
+             patch("bootstrap.os.path.isfile", side_effect=lambda x: False if x.endswith(".db") else True), \
+             patch("sigdb._download_file") as mock_download:
+
+             bootstrap("dummy.exe", str(tmp_path), db_path=None)
+
+             mock_download.assert_called_once()
+
+    def test_bootstrap_error_stats_report(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        from bootstrap import bootstrap
+        import os
+        from pathlib import Path
+
+        # We want to patch the stats dict returned by one of the stages, but stats
+        # is just a local variable. So we can monkeypatch `sorted` to fake the key iteration
+        # in the loop on line 476.
+        # Original: for key in sorted(stats): ...
+
+        with patch("bootstrap.pefile.PE"), \
+             patch("bootstrap.Binary"), \
+             patch("bootstrap._is_packed", return_value=False), \
+             patch("bootstrap._read_existing_addresses", return_value=set()), \
+             patch("bootstrap._detect_compiler", return_value={"compiler": "unknown", "confidence": 0.0}), \
+             patch("bootstrap._scan_signatures", return_value=({}, [])), \
+             patch("bootstrap._scan_rtti", return_value=(0, [])), \
+             patch("bootstrap._analyze_imports", return_value=[]), \
+             patch("bootstrap._seed_strings", return_value=(0, [])), \
+             patch("bootstrap._propagate_labels", return_value=[]), \
+             patch("bootstrap._write_kb_entries", return_value=0), \
+             patch("bootstrap.os.path.isfile", return_value=True):
+
+             original_sorted = sorted
+             def mock_sorted(iterable, *args, **kwargs):
+                 if isinstance(iterable, dict) and "compiler" in iterable:
+                     # This is our stats dict. We can insert a fake error key directly into the dict here!
+                     iterable["_test_error"] = "failed_step"
+                     return original_sorted(list(iterable.keys()), *args, **kwargs)
+                 return original_sorted(iterable, *args, **kwargs)
+
+             with patch("builtins.sorted", side_effect=mock_sorted):
+                 result = bootstrap("dummy.exe", str(tmp_path), db_path=None)
+
+                 # Verify that the report contains our faked error note
+                 report_path = os.path.join(str(tmp_path), "bootstrap_report.txt")
+                 report_content = Path(report_path).read_text()
+                 assert "Note: test step raised failed_step" in report_content
+
+    def test_bootstrap_address_parsing_error(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        from bootstrap import bootstrap
+
+        # Test line 429-430 exception handling during address parsing
+        with patch("bootstrap.pefile.PE"), \
+             patch("bootstrap.Binary"), \
+             patch("bootstrap._is_packed", return_value=False), \
+             patch("bootstrap._read_existing_addresses", return_value=set()), \
+             patch("bootstrap._detect_compiler", return_value={"compiler": "unknown", "confidence": 0.0}), \
+             patch("bootstrap._scan_signatures", return_value=({}, ["@ 0xbadformat"])), \
+             patch("bootstrap._scan_rtti", return_value=(0, [])), \
+             patch("bootstrap._analyze_imports", return_value=[]), \
+             patch("bootstrap._seed_strings", return_value=(0, [])), \
+             patch("bootstrap._propagate_labels", return_value=[]), \
+             patch("bootstrap._write_kb_entries", return_value=0), \
+             patch("bootstrap.os.path.isfile", return_value=True):
+
+             # `@ 0xbadformat` string split is `["@", "0xbadformat"]`
+             # int("0xbadformat", 16) raises ValueError
+             # this exercises the try/except block in the kb_entry_addresses parsing loop
+             result = bootstrap("dummy.exe", str(tmp_path), db_path=None)
+             assert result["compiler"] == "unknown"
+
+    def test_cli_main_prints_results(self, tmp_path, capsys):
+        from bootstrap import main
+        from unittest.mock import patch
+        import os
+
+        with patch("bootstrap.bootstrap", return_value={"compiler": "msvc", "functions_identified": 10, "packed": False}):
+            main(["dummy.exe", "--project", str(tmp_path)])
+
+            captured = capsys.readouterr()
+            assert "Compiler: msvc" in captured.out
+            assert "Functions identified: 10" in captured.out
+            assert "Report written to:" in captured.out
+
+    def test_cli_main_prints_packed_warning(self, tmp_path, capsys):
+        from bootstrap import main
+        from unittest.mock import patch
+
+        with patch("bootstrap.bootstrap", return_value={"packed": True}):
+            main(["dummy.exe", "--project", str(tmp_path)])
+
+            captured = capsys.readouterr()
+            assert "WARNING: Binary appears to be packed" in captured.out
+
+    def test_cli_main_callable_no_args(self, tmp_path):
+        from bootstrap import main
+        import sys
+        from unittest.mock import patch
+
+        test_args = ["bootstrap.py", "dummy.exe", "--project", str(tmp_path)]
+        with patch.object(sys, 'argv', test_args), \
+             patch("bootstrap.bootstrap", return_value={"packed": True}):
+
+             # If __name__ == "__main__" block were run (via main()), it reads sys.argv
+             # This tests argv=None default inside main()
+             main()
