@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Live Status & Build History
+    url: https://github.com/skurtyyskirts/TombRaiderLegendRTX-/blob/main/docs/status/WHITEBOARD.md
+    about: Read the current culling map, build history, and decision tree before filing an issue.
+  - name: Troubleshooting Guide
+    url: https://github.com/skurtyyskirts/TombRaiderLegendRTX-/blob/main/docs/guides/troubleshooting.md
+    about: Common issues with the proxy DLL, RTX Remix config, and test pipeline.
+  - name: Contributing Guidelines
+    url: https://github.com/skurtyyskirts/TombRaiderLegendRTX-/blob/main/CONTRIBUTING.md
+    about: Setup instructions, coding conventions, and how to add a new culling layer patch.
