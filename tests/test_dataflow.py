@@ -122,6 +122,32 @@ class TestForwardPropagation:
         state = propagate_forward([])
         assert isinstance(state, dict)
 
+    def test_propagate_forward_step_by_step(self):
+        """propagate_forward should process instructions and update state dict step-by-step."""
+        from dataflow import propagate_forward
+        from unittest.mock import MagicMock, patch
+
+        insn1 = MagicMock(name="insn1")
+        insn2 = MagicMock(name="insn2")
+
+        init_state = {"eax": 10}
+
+        def mock_apply(state, insn, push_stack):
+            if insn == insn1:
+                state["eax"] = 20
+                push_stack.append("A")
+            elif insn == insn2:
+                state["ebx"] = state.get("eax", 0) + 5
+
+        with patch("dataflow._apply_insn", side_effect=mock_apply) as mocked_apply:
+            result = propagate_forward([insn1, insn2], init=init_state.copy())
+
+        assert result["eax"] == 20
+        assert result["ebx"] == 25
+        assert mocked_apply.call_count == 2
+        assert mocked_apply.call_args_list[0][0][1] == insn1
+        assert mocked_apply.call_args_list[1][0][1] == insn2
+
 
 class TestPropagateCfg:
     def test_importable(self):
