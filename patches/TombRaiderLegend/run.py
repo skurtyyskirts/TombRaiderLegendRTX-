@@ -1110,6 +1110,124 @@ def do_test_hash_stability(build_first=False, quick=False):
         restore_nightly_mod_override(disabled_nightly_mod)
 
 
+def release_gate_frame_ready(path: Path) -> bool:
+    """Return True if path is a usable game frame (not a black transition screen)."""
+    from PIL import Image, ImageStat
+    image = Image.open(path).convert("RGB")
+    stat = ImageStat.Stat(image)
+    mean_brightness = sum(float(v) for v in stat.mean) / 3.0
+    return mean_brightness >= 2.0
+
+
+def count_capture_markers(steps: list) -> int:
+    """Count screenshot capture steps (']') in a macro step sequence."""
+    return sum(1 for step in steps if step == "]")
+
+
+def generate_random_movement_legacy() -> list:
+    """Generate a randomized A/D strafe sequence with 3 screenshot capture points."""
+    hold_a = random.randint(300, 1200)
+    hold_d = random.randint(300, 1200)
+    return [
+        "]",
+        f"A:{hold_a}",
+        "WAIT:200",
+        "]",
+        f"D:{hold_d}",
+        "WAIT:200",
+        "]",
+    ]
+
+
+def evaluate_release_gate(
+    hash_screenshots: list,
+    clean_screenshots: list,
+    log_path,
+    *,
+    crashed: bool = False,
+) -> dict:
+    """Evaluate whether a build passes the TRL release gate.
+
+    Args:
+        hash_screenshots: Paths to hash-debug screenshots (debug view 277).
+        clean_screenshots: Paths to clean render screenshots (debug view 0).
+        log_path: Path to ffp_proxy.log.
+        crashed: Whether the game crashed during the test.
+
+    Returns:
+        dict with sub-reports: hash_stability, lights, movement, log, and top-level passed.
+    """
+    import numpy as np
+    from PIL import Image
+    from patches.TombRaiderLegend.nightly.scoring import evaluate_hash_stability
+    from patches.TombRaiderLegend.nightly.model import Rect
+    from patches.TombRaiderLegend.nightly.logs import parse_proxy_log
+    from patches.TombRaiderLegend.nightly.manifests import load_nightly_config
+
+    # Hash stability: compare hash-debug frames within a center ROI.
+    # Strafing builds use 50% threshold — stricter 98% is for nightly no-movement scenes.
+    _HASH_ROI = Rect(0.18, 0.18, 0.82, 0.88)
+    _HASH_PASS_PCT = 50.0
+    if not hash_screenshots:
+        hash_retention = 0.0
+    else:
+        hash_retention = evaluate_hash_stability(hash_screenshots, _HASH_ROI)
+    hash_stability_passed = hash_retention >= _HASH_PASS_PCT
+
+    # Lights: both red and green stage lights must be visible in every clean frame.
+    _LIGHT_MIN_PCT = 1.0
+    lights_passed = bool(clean_screenshots)
+    for path in clean_screenshots:
+        arr = np.asarray(Image.open(path).convert("RGB"), dtype=np.float32)
+        r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+        red_pct = float(((r > 80) & (r > g * 2.0) & (r > b * 2.0)).mean() * 100.0)
+        green_pct = float(((g > 80) & (g > r * 2.0) & (g > b * 1.5)).mean() * 100.0)
+        if red_pct < _LIGHT_MIN_PCT or green_pct < _LIGHT_MIN_PCT:
+            lights_passed = False
+            break
+
+    # Movement: at least one consecutive pair of clean frames must differ.
+    _MOVEMENT_MIN_DIFF = 0.5
+    movement_passed = False
+    if len(clean_screenshots) >= 2:
+        frames = [
+            np.asarray(Image.open(p).convert("RGB"), dtype=np.float32)
+            for p in clean_screenshots
+        ]
+        for a, b in zip(frames, frames[1:]):
+            if float(np.abs(a - b).mean()) > _MOVEMENT_MIN_DIFF:
+                movement_passed = True
+                break
+
+    # Log: all required patches present and no passthrough/xform-blocked draws.
+    try:
+        tokens = load_nightly_config().required_patch_tokens
+    except Exception:
+        tokens = []
+    summary = parse_proxy_log(log_path, tokens)
+    log_passed = (
+        summary.all_required_patches_present
+        and summary.max_passthrough == 0
+        and summary.max_xform_blocked == 0
+    )
+
+    overall_passed = (
+        not crashed
+        and hash_stability_passed
+        and lights_passed
+        and movement_passed
+        and log_passed
+    )
+
+    return {
+        "hash_stability": {"passed": hash_stability_passed, "retention_pct": hash_retention},
+        "lights": {"passed": lights_passed},
+        "movement": {"passed": movement_passed},
+        "log": {"passed": log_passed},
+        "passed": overall_passed,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="TRL RTX hash stability test orchestrator")

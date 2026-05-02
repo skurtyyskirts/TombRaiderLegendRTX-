@@ -96,6 +96,7 @@ def render_mod_usda(payload: dict[str, Any]) -> str:
         hashes = group.get("mesh_hashes", [])
         for mesh_hash in hashes:
             lines.append(f'    over "mesh_{mesh_hash}" {{')
+            lines.append("        int preserveOriginalDrawCall = 1")
             for light in payload.get("lights", []):
                 if light.get("anchor_group") != group["id"]:
                     continue

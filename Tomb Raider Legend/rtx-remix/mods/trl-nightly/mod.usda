@@ -1,0 +1,37 @@
+#usda 1.0
+(
+    defaultPrim = "RootNode"
+)
+
+def Xform "RootNode" {
+    over "mesh_00026F0C797E55AC" {
+        int preserveOriginalDrawCall = 1
+        def SphereLight "stage_red_reference" {
+            float intensity = 1000
+            float exposure = 5
+            color3f color = (1.0, 0.16, 0.12)
+            float radius = 160.0
+        }
+        def SphereLight "stage_green_reference" {
+            float intensity = 1000
+            float exposure = 5
+            color3f color = (0.16, 1.0, 0.2)
+            float radius = 160.0
+        }
+    }
+    over "mesh_CC523F5CCE6A3A9E" {
+        int preserveOriginalDrawCall = 1
+        def SphereLight "stage_red_reference" {
+            float intensity = 1000
+            float exposure = 5
+            color3f color = (1.0, 0.16, 0.12)
+            float radius = 160.0
+        }
+        def SphereLight "stage_green_reference" {
+            float intensity = 1000
+            float exposure = 5
+            color3f color = (0.16, 1.0, 0.2)
+            float radius = 160.0
+        }
+    }
+}

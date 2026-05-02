@@ -83,7 +83,48 @@ class TestBuildCfgWithSwitch:
         from common import Binary
         b = MagicMock(spec=Binary)
         b.disasm.return_value = []
-        b.find_func_start.return_value = 0x401000
         blocks, edges = build_cfg(b, 0x401000)
         assert blocks == {}
         assert edges == []
+
+    def test_basic_branching(self):
+        """Test build_cfg with basic branching logic (cmp, je, mov, nop, ret)."""
+        from cfg import build_cfg
+        from common import Binary
+
+        # 0x401000: cmp eax, 0
+        # 0x401003: je 0x40100a
+        # 0x401005: mov ebx, 1
+        # 0x40100a: nop
+        # 0x40100b: ret
+        cmp_bytes = b"\x83\xF8\x00"      # cmp eax, 0
+        je_bytes = b"\x74\x05"          # je +0x05 (target 0x40100a)
+        mov_bytes = b"\xBB\x01\x00\x00\x00" # mov ebx, 1
+        nop_bytes = b"\x90"              # nop
+        ret_bytes = b"\xC3"              # ret
+
+        code = cmp_bytes + je_bytes + mov_bytes + nop_bytes + ret_bytes
+
+        cs = Cs(CS_ARCH_X86, CS_MODE_32)
+        cs.detail = True
+        insns = list(cs.disasm(code, 0x401000))
+
+        b = MagicMock(spec=Binary)
+        b.disasm.return_value = insns
+
+        blocks, edges = build_cfg(b, 0x401000)
+
+        # Leaders should be 0x401000, 0x401005 (fall-through of branch), 0x40100a (target of branch)
+        assert 0x401000 in blocks
+        assert 0x401005 in blocks
+        assert 0x40100a in blocks
+        assert len(blocks) == 3
+
+        # Edges should be:
+        # 0x401000 -> 0x40100a (je)
+        # 0x401000 -> 0x401005 (fall)
+        # 0x401005 -> 0x40100a (fall)
+        assert (0x401000, 0x40100a, "je") in edges
+        assert (0x401000, 0x401005, "fall") in edges
+        assert (0x401005, 0x40100a, "fall") in edges
+        assert len(edges) == 3

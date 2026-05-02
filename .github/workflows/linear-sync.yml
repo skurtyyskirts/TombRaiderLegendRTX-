@@ -1,0 +1,36 @@
+name: Linear Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - CHANGELOG.md
+      - WHITEBOARD.md
+      - 'docs/**'
+  schedule:
+    - cron: '0 9 * * 1'  # Weekly Monday 09:00 UTC
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Sync mode'
+        default: sync
+        type: choice
+        options: [sync, status, research]
+
+jobs:
+  linear-sync:
+    runs-on: ubuntu-latest
+    if: vars.LINEAR_ENABLED == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install requests
+
+      - name: Sync to Linear
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        run: python linear/sync.py ${{ github.event.inputs.mode || 'sync' }}

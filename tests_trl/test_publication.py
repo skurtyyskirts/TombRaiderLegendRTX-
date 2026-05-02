@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from patches.TombRaiderLegend.nightly.publication import build_draft_pr_payload, format_rolling_branch, format_run_branch, parse_github_remote
 
 

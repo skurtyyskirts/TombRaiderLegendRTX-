@@ -34,6 +34,7 @@ Quick-lookup technical reference documents.
 | [`reference/TRL-RTX-Remix-Definition-Book.md`](reference/TRL-RTX-Remix-Definition-Book.md) | Glossary of engine terms, Remix concepts, and project-specific definitions |
 | [`reference/TRL-RTX-Remix-Rosetta-Stone.md`](reference/TRL-RTX-Remix-Rosetta-Stone.md) | Cross-reference: engine internals ↔ Remix concepts |
 | [`reference/TRL_MODDING_TOOLS.md`](reference/TRL_MODDING_TOOLS.md) | Available modding tools and integration points |
+| [`reference/tools-llm-reference.md`](reference/tools-llm-reference.md) | Tools, debuggers, and MCP servers for the TRL × RTX Remix workflow |
 
 ---
 
@@ -81,10 +82,11 @@ Historical artifacts from earlier sessions. Not actively maintained.
 
 ```
 archive/
-├── sessions/                    # Session handoffs from early development
-├── prompts/                     # AI prompts and skill files from early development
-│   └── SESSION_PROMPTS.md       # Ready-to-paste Claude Code session starters
-├── compass/                     # Compass AI assistant analysis outputs
-├── DEEP_RESEARCH_QUERIES.md     # Research queries for Claude.ai deep research mode
-└── Combined_Research_Docs.md    # Consolidated early research dump
+├── sessions/                          # Session handoffs from early development
+├── prompts/                           # AI prompts and skill files from early development
+│   └── SESSION_PROMPTS.md             # Ready-to-paste Claude Code session starters
+├── compass/                           # Compass AI assistant analysis outputs
+├── TRL-RTX-Remix-Workspace-Analysis.md  # Workspace analysis from initial project setup (2026-03-19)
+├── DEEP_RESEARCH_QUERIES.md           # Research queries for Claude.ai deep research mode
+└── Combined_Research_Docs.md          # Consolidated early research dump
 ```
