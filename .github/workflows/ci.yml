@@ -22,7 +22,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytest
       - name: Run tests
-        run: PYTHONPATH=. pytest tests/ -v --tb=short --basetemp "$RUNNER_TEMP/pytest-test-python-${{ matrix.python-version }}"
+        env:
+          PYTHONPATH: .
+        run: pytest tests/ -v --tb=short --basetemp "$RUNNER_TEMP/pytest-test-python-${{ matrix.python-version }}"
 
   test-trl-nightly:
     runs-on: windows-latest
@@ -35,7 +37,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytest
       - name: Run TRL nightly tests
-        run: PYTHONPATH=. pytest tests_trl/ -v --tb=short --basetemp "$env:RUNNER_TEMP\\pytest-trl-nightly"
+        env:
+          PYTHONPATH: .
+        run: pytest tests_trl/ -v --tb=short --basetemp "$env:RUNNER_TEMP\\pytest-trl-nightly"
 
   # Authoritative TRL proxy DLL build verification (MSVC x86, no CRT)
   build-trl-proxy:
