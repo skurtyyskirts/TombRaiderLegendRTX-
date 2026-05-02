@@ -5,6 +5,7 @@
 
 def Xform "RootNode" {
     over "mesh_00026F0C797E55AC" {
+        int preserveOriginalDrawCall = 1
         def SphereLight "stage_red_reference" {
             float intensity = 1000
             float exposure = 5
@@ -19,6 +20,7 @@ def Xform "RootNode" {
         }
     }
     over "mesh_CC523F5CCE6A3A9E" {
+        int preserveOriginalDrawCall = 1
         def SphereLight "stage_red_reference" {
             float intensity = 1000
             float exposure = 5
