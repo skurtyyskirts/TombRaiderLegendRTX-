@@ -249,13 +249,12 @@ def build_proxy_bundle(proxy_dir=PROXY_DIR, proxy_ini_path=None,
         raise FileNotFoundError(f"build.bat not found: {build_bat}")
 
     print("\n=== Building proxy ===")
-    command = f'pushd "{proxy_dir}" && call "{build_bat.name}"'
     r = subprocess.run(
-        command,
+        ["cmd.exe", "/c", build_bat.name],
         capture_output=True,
         text=True,
-        shell=True,
-        cwd=str(game_dir),
+        shell=False,
+        cwd=str(proxy_dir),
     )
     print(r.stdout)
     if r.returncode != 0:

@@ -299,14 +299,14 @@ def deploy(build_arg: str):
     build_bat = PROXY_DIR / "build.bat"
     alt_bat   = PROXY_DIR / "_build.bat"
     print("\n=== Building ===")
-    r = subprocess.run(str(build_bat), capture_output=True, text=True,
-                       shell=True, cwd=str(PROXY_DIR))
+    r = subprocess.run(["cmd.exe", "/c", build_bat.name], capture_output=True, text=True,
+                       shell=False, cwd=str(PROXY_DIR))
     print(r.stdout)
     if r.returncode != 0:
         if "compiler predefined library helper" in r.stdout or "LNK1257" in r.stdout:
             print("  /GL+memcpy conflict — retrying with _build.bat (no /GL)...")
-            r = subprocess.run(str(alt_bat), capture_output=True, text=True,
-                               shell=True, cwd=str(PROXY_DIR))
+            r = subprocess.run(["cmd.exe", "/c", alt_bat.name], capture_output=True, text=True,
+                               shell=False, cwd=str(PROXY_DIR))
             print(r.stdout)
         if r.returncode != 0:
             print(f"BUILD FAILED:\n{r.stderr}")
