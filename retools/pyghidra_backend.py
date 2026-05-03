@@ -7,14 +7,13 @@ using Ghidra's DecompInterface via the pyghidra bridge.
 import argparse
 import os
 import shutil
-import sys
 import time
 from pathlib import Path
-
 
 # ---------------------------------------------------------------------------
 # is_analyzed
 # ---------------------------------------------------------------------------
+
 
 def is_analyzed(project_dir: str, binary_name: str) -> bool:
     """Check whether a Ghidra project with completed analysis exists.
@@ -79,6 +78,7 @@ def _import_pyghidra():
     _ensure_ghidra_env()
     try:
         import pyghidra
+
         return pyghidra
     except ImportError:
         return None
@@ -87,6 +87,7 @@ def _import_pyghidra():
 # ---------------------------------------------------------------------------
 # analyze
 # ---------------------------------------------------------------------------
+
 
 def analyze(binary: str, project_dir: str) -> str:
     """Run Ghidra auto-analysis on a binary and save the project.
@@ -127,6 +128,7 @@ def analyze(binary: str, project_dir: str) -> str:
 # ---------------------------------------------------------------------------
 # decompile
 # ---------------------------------------------------------------------------
+
 
 def decompile(project_dir: str, binary: str, va: int) -> str:
     """Decompile a function at the given virtual address.
@@ -187,6 +189,7 @@ def decompile(project_dir: str, binary: str, va: int) -> str:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main():
     """CLI entry point with analyze, decompile, and status subcommands."""
     parser = argparse.ArgumentParser(
@@ -234,5 +237,5 @@ def main():
         raise SystemExit(0)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

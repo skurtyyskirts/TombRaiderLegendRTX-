@@ -38,7 +38,7 @@ DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "signatures.db"
 _HF_REPO_DEFAULT = "RTX-Remix/Vibe-Reverse-Engineering-Signature-DB"
 _HF_URL_TEMPLATE = "https://huggingface.co/{repo}/resolve/main/{path}"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -50,12 +50,15 @@ CREATE TABLE IF NOT EXISTS byte_sigs (
     name      TEXT    NOT NULL,
     pattern   BLOB    NOT NULL,
     mask      BLOB    NOT NULL,
-    func_size INTEGER NOT NULL,
+    func_size INTEGER NOT NULL DEFAULT 0,
     tail_crc  INTEGER NOT NULL DEFAULT 0,
     compiler  TEXT    NOT NULL DEFAULT '',
     source    TEXT    NOT NULL DEFAULT '',
-    category  TEXT    NOT NULL DEFAULT ''
+    category  TEXT    NOT NULL DEFAULT '',
+    prefix    BLOB    NOT NULL DEFAULT ''
 );
+
+CREATE INDEX IF NOT EXISTS idx_byte_prefix ON byte_sigs (prefix);
 
 CREATE TABLE IF NOT EXISTS structural_sigs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,280 +73,157 @@ CREATE TABLE IF NOT EXISTS structural_sigs (
     category      TEXT    NOT NULL DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS compiler_fingerprints (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind     TEXT NOT NULL,
-    pattern  BLOB NOT NULL,
-    mask     BLOB NOT NULL DEFAULT x'',
-    compiler TEXT NOT NULL,
-    label    TEXT NOT NULL DEFAULT ''
-);
+CREATE INDEX IF NOT EXISTS idx_struct_mhash
+    ON structural_sigs (mnemonic_hash);
 """
 
-# CRT DLLs that identify the compiler / runtime version
-_CRT_DLLS: dict[str, str] = {
-    "msvcrt.dll": "msvc-generic",
-    "msvcr70.dll": "msvc-7.0",
-    "msvcr71.dll": "msvc-7.1",
-    "msvcr80.dll": "msvc-8.0",
-    "msvcr90.dll": "msvc-9.0",
-    "msvcr100.dll": "msvc-10.0",
-    "msvcr110.dll": "msvc-11.0",
-    "msvcr120.dll": "msvc-12.0",
-    "ucrtbase.dll": "msvc-14+",
-    "vcruntime140.dll": "msvc-14.0+",
-    "vcruntime140d.dll": "msvc-14.0+-debug",
-    "libgcc_s_dw2-1.dll": "gcc-mingw",
-    "libstdc++-6.dll": "gcc-mingw",
-    "cygwin1.dll": "gcc-cygwin",
-}
 
-# Heuristic patterns for _categorize_name
-_CRT_PREFIXES = (
-    "_security", "__security", "_malloc", "_free", "_realloc", "_calloc",
-    "_msize", "__acrt", "_atexit", "__dllonexit", "_onexit",
-    "_initterm", "__initterm", "_cexit", "__cexit", "_exit",
-    "__crt", "_crt", "__scrt", "_amsg_exit", "_invalid_parameter",
-    "__report_gsfailure", "_except_handler", "__except_handler",
-    "_SEH_", "__SEH_", "__C_specific_handler",
-    "__GSHandlerCheck", "_guard_", "__guard_",
-    "_chkstk", "__chkstk", "_alloca_probe",
-    "_purecall", "__purecall",
-    "___report_rangecheckfailure",
-)
+# ---------------------------------------------------------------------------
+# Data types
+# ---------------------------------------------------------------------------
 
-_MATH_NAMES = frozenset((
-    "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
-    "sinf", "cosf", "tanf", "asinf", "acosf", "atanf", "atan2f",
-    "sqrt", "sqrtf", "pow", "powf", "exp", "expf", "log", "logf",
-    "log10", "log10f", "ceil", "ceilf", "floor", "floorf",
-    "fabs", "fabsf", "fmod", "fmodf",
-    "_CIsin", "_CIcos", "_CItan", "_CIasin", "_CIacos", "_CIatan",
-    "_CIatan2", "_CIsqrt", "_CIpow", "_CIexp", "_CIlog", "_CIlog10",
-    "_CIfmod", "_ftol", "_ftol2", "_ftol2_sse", "_dtol2", "_dtol2_sse",
-))
-
-
-@dataclass(frozen=True, slots=True)
+@dataclass
 class Match:
-    """Result of a signature lookup."""
     name: str
     confidence: float
-    tier: str           # "byte" or "structural"
-    compiler: str = ""
-    source: str = ""
-    category: str = ""
+    tier: str          # "byte" | "structural"
+    compiler: str
+    source: str
+    category: str
 
 
 # ---------------------------------------------------------------------------
-# Signature extraction
+# Helpers
 # ---------------------------------------------------------------------------
 
-def extract_byte_sig(b: Binary, va: int) -> tuple[bytes, bytes, int, int] | None:
-    """Extract a 32-byte pattern + mask from the function at *va*.
-
-    Wildcards bytes 1-4 after E8 (CALL rel32) and E9 (JMP rel32) opcodes
-    since the rel32 operand is position-dependent. Computes a FLIRT-style
-    tail CRC over the last 32 bytes, and estimates function size.
-
-    Returns:
-        (pattern, mask, tail_crc, func_size) or None if unreadable.
-    """
-    code = b.read_va(va, 64)
-    if len(code) < 32:
-        return None
-
-    pattern = bytearray(code[:32])
-    mask = bytearray(b"\xff" * 32)
-
-    # Wildcard E8/E9 rel32 operands
-    i = 0
-    while i < 28:  # need room for 5 bytes
-        if pattern[i] in (0xE8, 0xE9):
-            for j in range(1, 5):
-                mask[i + j] = 0x00
-                pattern[i + j] = 0x00
-            i += 5
-        else:
-            i += 1
-
-    # Estimate function size from disassembly
-    func_size = _estimate_func_size(b, va)
-
-    # Tail CRC: CRC32 of last 32 bytes (or whatever is available)
-    tail_offset = max(0, func_size - 32)
-    tail_bytes = b.read_va(va + tail_offset, 32)
-    tail_crc = zlib.crc32(tail_bytes) & 0xFFFFFFFF if tail_bytes else 0
-
-    return bytes(pattern), bytes(mask), tail_crc, func_size
+def _masked_eq(code: bytes, pattern: bytes, mask: bytes) -> bool:
+    if len(code) < len(pattern):
+        return False
+    for c, p, m in zip(code, pattern, mask):
+        if m and c != p:
+            return False
+    return True
 
 
-def _estimate_func_size(b: Binary, va: int) -> int:
-    """Estimate function size by scanning for ret + padding."""
-    insns = b.disasm(va, count=500, max_bytes=0x4000)
-    if not insns:
-        return 0
-    last_ret_end = 0
-    nop_run = 0
+def _mnemonic_hash(insns) -> int:
+    h = 0
     for insn in insns:
-        if insn.mnemonic in ("ret", "retn"):
-            last_ret_end = insn.address + insn.size - va
-            nop_run = 0
-        elif last_ret_end > 0:
-            if insn.mnemonic == "nop":
-                nop_run += 1
-                if nop_run >= 2:
-                    return last_ret_end
-            elif insn.mnemonic == "int3":
-                return last_ret_end
-            else:
-                nop_run = 0
-    return last_ret_end if last_ret_end > 0 else (insns[-1].address + insns[-1].size - va)
+        h = (h * 31 + hash(insn.mnemonic)) & 0xFFFFFFFF
+    return h
 
 
-def extract_structural_sig(b: Binary, va: int) -> dict | None:
-    """Extract structural (CFG-based) signature for the function at *va*.
-
-    Returns:
-        Dict with block_count, edge_count, call_count, mnemonic_hash,
-        constants -- or None if the function can't be analyzed.
-    """
-    try:
-        from cfg import build_cfg
-    except ImportError:
-        return None
-
-    blocks, edges = build_cfg(b, va)
-    if not blocks:
-        return None
-
-    # Count calls and collect mnemonics + constants
-    call_count = 0
-    mnemonics: list[str] = []
-    constants: set[int] = set()
-
-    for block_insns in blocks.values():
-        for insn in block_insns:
-            mnemonics.append(insn.mnemonic)
-            if insn.mnemonic == "call":
-                call_count += 1
-            # Collect interesting immediate constants
-            for ref in b.abs_imm_refs(insn):
-                if 0x100 <= ref <= 0xFFFFFFFF:
-                    constants.add(ref)
-
-    mnemonic_str = ",".join(mnemonics)
-    mnemonic_hash = zlib.crc32(mnemonic_str.encode()) & 0xFFFFFFFF
-
-    sorted_consts = sorted(constants)[:16]  # cap to avoid huge strings
-    const_str = ",".join(f"0x{c:X}" for c in sorted_consts)
-
-    return {
-        "block_count": len(blocks),
-        "edge_count": len(edges),
-        "call_count": call_count,
-        "mnemonic_hash": mnemonic_hash,
-        "constants": const_str,
-    }
+def _compute_tail_crc(code: bytes) -> int:
+    if len(code) < 8:
+        return 0
+    return zlib.crc32(code[-8:]) & 0xFFFFFFFF
 
 
-# ---------------------------------------------------------------------------
-# Compiler fingerprinting
-# ---------------------------------------------------------------------------
-
-def parse_rich_header(b: Binary) -> list[dict]:
-    """Parse the PE Rich header for comp.id entries.
-
-    The Rich header sits between the DOS stub and the PE signature,
-    XOR-encrypted with a checksum key. Each entry encodes a tool ID
-    (linker, compiler, etc.) and a use count.
-
-    Returns:
-        List of dicts with comp_id, tool_id, minor_version, count.
-    """
-    raw = b.raw
-    # Find "Rich" signature
-    rich_pos = raw.find(b"Rich")
-    if rich_pos == -1 or rich_pos < 0x40:
-        return []
-
-    # The 4 bytes after "Rich" are the XOR key
-    key = struct.unpack_from("<I", raw, rich_pos + 4)[0]
-
-    # Find "DanS" marker (XOR-encrypted) scanning backward from Rich
-    dans_enc = struct.pack("<I", 0x536E6144 ^ key)  # "DanS" ^ key
-    dans_pos = raw.rfind(dans_enc, 0, rich_pos)
-    if dans_pos == -1:
-        return []
-
-    # Entries start after DanS + 12 bytes of padding (3 x key), end at Rich
-    data_start = dans_pos + 16  # DanS + 3 padding DWORDs
-    entries = []
-    for off in range(data_start, rich_pos, 8):
-        if off + 8 > len(raw):
+def _extract_prefix(pattern: bytes, mask: bytes, max_len: int = 8) -> bytes:
+    """Extract the longest leading run of non-wildcard bytes."""
+    prefix = bytearray()
+    for b, m in zip(pattern[:max_len], mask[:max_len]):
+        if not m:   # wildcard byte
             break
-        val1 = struct.unpack_from("<I", raw, off)[0] ^ key
-        val2 = struct.unpack_from("<I", raw, off + 4)[0] ^ key
-        tool_id = (val1 >> 16) & 0xFFFF
-        minor_version = val1 & 0xFFFF
-        count = val2
-        entries.append({
-            "comp_id": val1,
-            "tool_id": tool_id,
-            "minor_version": minor_version,
-            "count": count,
-        })
+        prefix.append(b)
+    return bytes(prefix)
 
+
+def _download_file(url: str, dest: str) -> None:
+    with urllib.request.urlopen(url) as resp, open(dest, 'wb') as fout:
+        while True:
+            chunk = resp.read(65536)
+            if not chunk:
+                break
+            fout.write(chunk)
+
+
+def _pull_sources(repo: str, dest_dir: str) -> None:
+    """Download all source JSON files listed in the HuggingFace repo index."""
+    index_url = _HF_URL_TEMPLATE.format(repo=repo, path="sources/index.json")
+    dest = Path(dest_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    try:
+        with urllib.request.urlopen(index_url) as resp:
+            index = json.loads(resp.read())
+        for fname in index.get("files", []):
+            url = _HF_URL_TEMPLATE.format(repo=repo, path=f"sources/{fname}")
+            _download_file(url, str(dest / fname))
+            print(f"  Downloaded {fname}")
+    except Exception as e:
+        print(f"  Warning: could not pull sources: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Rich-header parser
+# ---------------------------------------------------------------------------
+
+def _parse_rich_header(pe_bytes: bytes) -> dict | None:
+    """Parse the Rich header from a PE file and return product counts."""
+    # The Rich header sits between the DOS stub and the PE header.
+    # It is XOR-obfuscated with a 4-byte key stored just before "Rich".
+    # Marker: b"Rich" followed by the 4-byte XOR key.
+    RICH = b"Rich"
+    DANS = b"DanS"
+    rich_pos = pe_bytes.find(RICH)
+    if rich_pos < 0:
+        return None
+    key = struct.unpack_from("<I", pe_bytes, rich_pos + 4)[0]
+    # Locate "DanS" (XOR-encoded start of the rich header)
+    dans_pos = -1
+    for i in range(rich_pos - 4, -1, -4):
+        if len(pe_bytes) < i + 4:
+            continue
+        val = struct.unpack_from("<I", pe_bytes, i)[0] ^ key
+        if val == struct.unpack(">I", DANS)[0]:
+            dans_pos = i
+            break
+        val2 = struct.unpack_from("<I", pe_bytes, i)[0]
+        if val2 ^ key == int.from_bytes(DANS, 'big'):
+            dans_pos = i
+            break
+    if dans_pos < 0:
+        return None
+
+    entries: dict[int, int] = {}
+    pos = dans_pos + 16  # skip 4 DWORDs (DanS + 3 padding)
+    while pos + 8 <= rich_pos:
+        prod_id = struct.unpack_from("<I", pe_bytes, pos)[0] ^ key
+        count = struct.unpack_from("<I", pe_bytes, pos + 4)[0] ^ key
+        comp_id = prod_id >> 16
+        build_id = prod_id & 0xFFFF
+        entries[(comp_id, build_id)] = entries.get((comp_id, build_id), 0) + count
+        pos += 8
     return entries
 
 
-def detect_crt_import(b: Binary) -> str | None:
-    """Check PE imports for known CRT DLLs.
+# ---------------------------------------------------------------------------
+# Compiler fingerprinting helpers
+# ---------------------------------------------------------------------------
 
-    Returns:
-        Compiler/runtime identifier string, or None.
-    """
-    if not hasattr(b.pe, "DIRECTORY_ENTRY_IMPORT"):
-        return None
-    for entry in b.pe.DIRECTORY_ENTRY_IMPORT:
-        dll_name = entry.dll.decode("ascii", errors="ignore").lower()
-        for crt_dll, compiler_id in _CRT_DLLS.items():
-            if dll_name == crt_dll.lower():
-                return compiler_id
-    return None
+_MSVC_MARKER_PATTERNS = [
+    b"\xCC\xCC\xCC\xCC",          # int3 padding
+    b"\x56\x8B\xF1",              # push esi; mov esi, ecx  (thiscall prologue)
+    b"\x8B\xFF\x55\x8B\xEC",      # mov edi,edi; push ebp; mov ebp,esp
+]
+_GCC_MARKER_PATTERNS = [
+    b"\x55\x89\xE5",              # push ebp; mov ebp, esp (GCC x86 prologue)
+    b"\x66\x90",                  # xchg ax,ax (GCC nop)
+]
+_MINGW_IMPORT_HINTS = [b"__mingw", b"libgcc", b"__imp_"]
 
 
-def _categorize_name(name: str) -> str:
-    """Heuristic category from a function name.
-
-    Returns one of: "crt", "math", "stl", "exception", "security", "unknown".
-    """
-    lower = name.lower()
-
-    # CRT / startup
-    for prefix in _CRT_PREFIXES:
-        if lower.startswith(prefix.lower()):
-            return "crt"
-
-    # Math
-    # Strip leading underscore(s) for matching
-    stripped = name.lstrip("_")
-    if stripped in _MATH_NAMES or name in _MATH_NAMES:
-        return "math"
-
-    # STL
-    if "std::" in name or "basic_string" in name or "allocator" in name:
-        return "stl"
-
-    # Exception handling
-    if any(kw in lower for kw in ("throw", "catch", "unwind", "except", "eh_")):
-        return "exception"
-
-    # Security
-    if "security" in lower or "guard" in lower or "gsfailure" in lower:
-        return "security"
-
-    return "unknown"
+def _scan_import_names(b: Binary) -> list[str]:
+    """Return a flat list of imported DLL / function names."""
+    names: list[str] = []
+    try:
+        for imp in b.pe.DIRECTORY_ENTRY_IMPORT:
+            names.append(imp.dll.decode(errors="replace").lower())
+            for sym in imp.imports:
+                if sym.name:
+                    names.append(sym.name.decode(errors="replace").lower())
+    except AttributeError:
+        pass
+    return names
 
 
 # ---------------------------------------------------------------------------
@@ -351,36 +231,63 @@ def _categorize_name(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 class SignatureDB:
-    """SQLite-backed signature database.
+    def __init__(self, path: str | Path = DEFAULT_DB_PATH) -> None:
+        self._path = str(path)
+        self._conn: sqlite3.Connection | None = None
+        self._open()
 
-    Args:
-        path: Filesystem path to the database file, or ":memory:".
-    """
-
-    def __init__(self, path: str = ":memory:"):
-        self._conn = sqlite3.connect(path)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._init_schema()
-
-    def _init_schema(self) -> None:
+    def _open(self) -> None:
+        self._conn = sqlite3.connect(self._path)
+        self._conn.row_factory = sqlite3.Row
         cur = self._conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' "
-            "AND name='schema_version'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
         )
-        if cur.fetchone() is not None:
+        if cur.fetchone() is None:
+            self._init_schema()
+        else:
             row = self._conn.execute(
                 "SELECT version FROM schema_version"
             ).fetchone()
-            if row and row[0] > SCHEMA_VERSION:
-                self._conn.close()
-                self._conn = None
-                raise RuntimeError(
-                    f"Database schema version {row[0]} is newer than "
-                    f"code version {SCHEMA_VERSION}. Update the code."
-                )
-            # Existing DB with compatible version -- nothing to create
-            return
+            if row is None or row[0] != SCHEMA_VERSION:
+                self._migrate(row[0] if row else 0)
 
+    def _migrate(self, from_version: int) -> None:
+        """Migrate schema from from_version to SCHEMA_VERSION."""
+        if from_version == 1:
+            # v1 -> v2: add prefix column and index, populate from existing rows
+            try:
+                self._conn.execute(
+                    "ALTER TABLE byte_sigs ADD COLUMN prefix BLOB NOT NULL DEFAULT ''"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_byte_prefix ON byte_sigs (prefix)"
+            )
+            # Populate prefix for all existing rows
+            rows = self._conn.execute(
+                "SELECT id, pattern, mask FROM byte_sigs"
+            ).fetchall()
+            for row in rows:
+                prefix = _extract_prefix(bytes(row[1]), bytes(row[2]))
+                self._conn.execute(
+                    "UPDATE byte_sigs SET prefix = ? WHERE id = ?",
+                    (prefix, row[0]),
+                )
+            self._conn.execute(
+                "UPDATE schema_version SET version = ?", (SCHEMA_VERSION,)
+            )
+            self._conn.commit()
+        else:
+            # Unknown version: drop and reinit
+            self._conn.executescript(
+                "DROP TABLE IF EXISTS schema_version;"
+                "DROP TABLE IF EXISTS byte_sigs;"
+                "DROP TABLE IF EXISTS structural_sigs;"
+            )
+            self._init_schema()
+
+    def _init_schema(self) -> None:
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.execute(
             "INSERT INTO schema_version (version) VALUES (?)",
@@ -403,11 +310,12 @@ class SignatureDB:
         func_size: int, tail_crc: int,
         compiler: str = "", source: str = "", category: str = "",
     ) -> None:
+        prefix = _extract_prefix(pattern, mask)
         self._conn.execute(
             "INSERT INTO byte_sigs "
-            "(name, pattern, mask, func_size, tail_crc, compiler, source, category) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (name, pattern, mask, func_size, tail_crc, compiler, source, category),
+            "(name, pattern, mask, func_size, tail_crc, compiler, source, category, prefix) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, pattern, mask, func_size, tail_crc, compiler, source, category, prefix),
         )
         self._conn.commit()
 
@@ -444,12 +352,15 @@ class SignatureDB:
             return []
         code32 = code[:32]
 
-        # TODO: Full-table scan. Add prefix index on first non-wildcarded
-        # bytes when the database grows large enough to matter.
-        cur = self._conn.execute(
+        # Generate all possible prefixes (lengths 0 to 8)
+        prefixes = [code32[:i] for i in range(min(len(code32), 8) + 1)]
+
+        query = (
             "SELECT name, pattern, mask, func_size, tail_crc, "
-            "compiler, source, category FROM byte_sigs"
+            "compiler, source, category FROM byte_sigs "
+            f"WHERE prefix IN ({','.join(['?'] * len(prefixes))})"
         )
+        cur = self._conn.execute(query, prefixes)
         candidates: list[tuple[Match, float]] = []
 
         for name, pattern, mask, db_size, db_tail_crc, compiler, source, category in cur:
@@ -478,36 +389,43 @@ class SignatureDB:
     # -- Structural matching -----------------------------------------------
 
     def match_structural(
-        self, block_count: int, edge_count: int, call_count: int,
-        mnemonic_hash: int, constants: str,
+        self, b: Binary, va: int,
+        preferred_compiler: str,
     ) -> list[Match]:
-        """Find structural matches by CFG shape and mnemonic hash.
-
-        Requires exact mnemonic_hash match plus CFG shape (block_count,
-        edge_count). call_count and constants refine the score.
-
-        Skips trivially small functions (< 3 blocks) -- their structural
-        signatures are too generic to produce meaningful matches.
-        """
-        if block_count < 3:
+        """Find structural matches for the function at *va*."""
+        try:
+            from analyzer import build_cfg
+            cfg = build_cfg(b, va)
+        except Exception:
             return []
 
+        block_count = len(cfg)
+        edge_count = sum(len(bb.successors) for bb in cfg.values())
+        call_count = sum(
+            1 for bb in cfg.values()
+            for insn in bb.insns if insn.mnemonic == "call"
+        )
+        all_insns = [
+            insn for bb in cfg.values() for insn in bb.insns
+        ]
+        mh = _mnemonic_hash(all_insns)
+
         cur = self._conn.execute(
-            "SELECT name, block_count, edge_count, call_count, "
-            "mnemonic_hash, constants, compiler, source, category "
-            "FROM structural_sigs "
-            "WHERE mnemonic_hash = ? AND block_count = ? AND edge_count = ?",
-            (mnemonic_hash, block_count, edge_count),
+            "SELECT name, block_count, edge_count, call_count, mnemonic_hash, "
+            "compiler, source, category FROM structural_sigs "
+            "WHERE mnemonic_hash = ?",
+            (mh,),
         )
         candidates: list[tuple[Match, float]] = []
-        for (name, db_bc, db_ec, db_cc, db_mh, db_consts,
-             compiler, source, category) in cur:
-            score = 0.6  # base for structural match
-            if db_cc == call_count:
+        for name, bc, ec, cc, mh2, compiler, source, category in cur:
+            score = 0.5
+            if bc == block_count:
                 score += 0.15
-            if db_consts == constants:
-                score += 0.15
-            elif constants and db_consts and set(db_consts.split(",")) & set(constants.split(",")):
+            if ec == edge_count:
+                score += 0.10
+            if cc == call_count:
+                score += 0.10
+            if preferred_compiler and compiler == preferred_compiler:
                 score += 0.05
             candidates.append((
                 Match(
@@ -516,308 +434,258 @@ class SignatureDB:
                 ),
                 score,
             ))
-
         candidates.sort(key=lambda c: c[1], reverse=True)
         return [m for m, _ in candidates]
 
-    # -- High-level identification -----------------------------------------
+    # -- Identification ----------------------------------------------------
 
     def identify(
-        self, b: Binary, va: int, preferred_compiler: str = "",
+        self, b: Binary, va: int,
+        preferred_compiler: str = "",
     ) -> Match | None:
-        """Identify a function by trying byte-exact, then structural fallback.
+        """Return the best match for the function at *va*, or None."""
+        code = b.read_va(va, 256)
+        func_size = 0  # unknown without disassembly
+        tail_crc = _compute_tail_crc(code)
+        fp = self.fingerprint(b)
+        compiler = preferred_compiler or fp.get("compiler", "")
 
-        Returns the best Match, or None.
-        """
-        # Tier 1: byte signature
-        code = b.read_va(va, 64)
-        if len(code) >= 32:
-            func_size = _estimate_func_size(b, va)
-            tail_offset = max(0, func_size - 32)
-            tail_bytes = b.read_va(va + tail_offset, 32)
-            tail_crc = zlib.crc32(tail_bytes) & 0xFFFFFFFF if tail_bytes else 0
-            matches = self.match_bytes(code[:32], func_size, preferred_compiler, tail_crc)
-            if matches:
-                return matches[0]
+        byte_matches = self.match_bytes(code, func_size, compiler, tail_crc)
+        if byte_matches:
+            return byte_matches[0]
 
-        # Tier 2: structural signature
-        sig = extract_structural_sig(b, va)
-        if sig is not None:
-            matches = self.match_structural(
-                sig["block_count"], sig["edge_count"], sig["call_count"],
-                sig["mnemonic_hash"], sig["constants"],
-            )
-            if matches:
-                return matches[0]
+        struct_matches = self.match_structural(b, va, compiler)
+        if struct_matches:
+            return struct_matches[0]
 
         return None
 
-    def scan(
-        self, b: Binary, preferred_compiler: str = "",
-    ) -> dict[int, Match]:
-        """Bulk-scan all functions in the binary.
+    # -- Scanning ----------------------------------------------------------
 
-        Returns:
-            Dict mapping function VA to best Match.
-        """
-        results: dict[int, Match] = {}
-        for va in b.func_table:
-            m = self.identify(b, va, preferred_compiler)
-            if m is not None:
-                results[va] = m
+    def scan(
+        self, b: Binary,
+        preferred_compiler: str = "",
+    ) -> list[tuple[int, Match]]:
+        """Scan all executable functions in *b* and return (va, match) pairs."""
+        fp = self.fingerprint(b)
+        compiler = preferred_compiler or fp.get("compiler", "")
+        results: list[tuple[int, Match]] = []
+
+        for va, offset, size in b.exec_ranges():
+            code = b.read_va(va, min(size, 256))
+            tail_crc = _compute_tail_crc(code)
+            ms = self.match_bytes(code, size, compiler, tail_crc)
+            if ms:
+                results.append((va, ms[0]))
+                continue
+            ms = self.match_structural(b, va, compiler)
+            if ms:
+                results.append((va, ms[0]))
+
         return results
 
-    # -- Compiler fingerprinting -------------------------------------------
+    # -- Compiler fingerprinting ------------------------------------------
 
     def fingerprint(self, b: Binary) -> dict:
-        """Three-signal compiler detection.
-
-        Signals:
-          1. Rich header comp.id entries
-          2. Marker byte patterns from compiler_fingerprints table
-          3. CRT import DLL names
-
-        Returns:
-            Dict with compiler, confidence (0-1), evidence (list of strings).
-        """
+        """Heuristically determine the compiler used to build *b*."""
         evidence: list[str] = []
-        votes: dict[str, float] = {}
+        scores: dict[str, float] = {}
 
-        # Signal 1: Rich header
-        rich = parse_rich_header(b)
-        if rich:
-            evidence.append(f"Rich header: {len(rich)} comp.id entries")
-            # Rich header implies MSVC toolchain
-            votes["msvc"] = votes.get("msvc", 0) + 0.4
+        import_names = _scan_import_names(b)
 
-        # Signal 2: Marker patterns from DB
-        cur = self._conn.execute(
-            "SELECT pattern, mask, compiler, label FROM compiler_fingerprints "
-            "WHERE kind = 'marker'"
-        )
-        for pattern, mask, compiler, label in cur:
-            # Scan first executable section for marker
-            for sec_va, sec_off, sec_size in b.exec_ranges():
-                chunk = b.raw[sec_off:sec_off + min(sec_size, 0x10000)]
-                if _scan_for_pattern(chunk, pattern, mask):
-                    evidence.append(f"Marker: {label} -> {compiler}")
-                    votes[compiler] = votes.get(compiler, 0) + 0.3
+        # MSVC CRT imports
+        msvc_crt = sum(1 for n in import_names if "msvcr" in n or "vcruntime" in n or "msvcp" in n)
+        if msvc_crt:
+            scores["msvc"] = scores.get("msvc", 0.0) + 0.4
+            evidence.append(f"MSVC CRT imports: {msvc_crt}")
+
+        # GCC/MinGW hints
+        mingw_hints = sum(1 for n in import_names
+                          for hint in _MINGW_IMPORT_HINTS if hint.decode() in n)
+        if mingw_hints:
+            scores["gcc"] = scores.get("gcc", 0.0) + 0.4
+            evidence.append(f"MinGW import hints: {mingw_hints}")
+
+        # Rich header product IDs
+        pe_bytes = b.read_va(b.base, min(0x1000, b.pe.OPTIONAL_HEADER.SizeOfHeaders))
+        rich = _parse_rich_header(pe_bytes)
+        if rich is not None:
+            for (comp_id, _), count in rich.items():
+                if comp_id in (0x0001, 0x00C7, 0x00FF, 0x0102):  # MSVC linkers
+                    scores["msvc"] = scores.get("msvc", 0.0) + 0.3
+                    evidence.append(f"Rich header MSVC comp_id=0x{comp_id:04X} x{count}")
                     break
+        elif pe_bytes.find(b"Rich") < 0:
+            # No Rich header at all: strongly suggests GCC/Clang
+            scores["gcc"] = scores.get("gcc", 0.0) + 0.2
+            evidence.append("No Rich header (GCC/Clang indicator)")
 
-        # Signal 3: CRT import
-        crt = detect_crt_import(b)
-        if crt:
-            evidence.append(f"CRT import: {crt}")
-            base = crt.split("-")[0] if "-" in crt else crt
-            votes[base] = votes.get(base, 0) + 0.3
+        # Code byte pattern scanning on the first 0x10000 bytes
+        scan_bytes = b.read_va(b.base, min(0x10000, b.pe.OPTIONAL_HEADER.SizeOfImage))
+        msvc_hits = sum(1 for pat in _MSVC_MARKER_PATTERNS if pat in scan_bytes)
+        gcc_hits = sum(1 for pat in _GCC_MARKER_PATTERNS if pat in scan_bytes)
+        if msvc_hits:
+            scores["msvc"] = scores.get("msvc", 0.0) + 0.1 * msvc_hits
+            evidence.append(f"MSVC code patterns: {msvc_hits}")
+        if gcc_hits:
+            scores["gcc"] = scores.get("gcc", 0.0) + 0.1 * gcc_hits
+            evidence.append(f"GCC code patterns: {gcc_hits}")
 
-        if not votes:
+        if not scores:
             return {"compiler": "unknown", "confidence": 0.0, "evidence": evidence}
 
-        best = max(votes, key=votes.get)
-        confidence = min(votes[best], 1.0)
-        return {"compiler": best, "confidence": confidence, "evidence": evidence}
-
-
-# ---------------------------------------------------------------------------
-# Build pipeline
-# ---------------------------------------------------------------------------
-
-def build_from_manifest(db: SignatureDB, manifest: dict) -> None:
-    """Ingest signatures from a JSON manifest.
-
-    Manifest format::
-
-        {
-            "sources": [
-                {
-                    "type": "binary_with_map",
-                    "binary": "path/to/file.dll",
-                    "map": "path/to/map.csv",
-                    "compiler": "msvc"
-                }
-            ]
+        best = max(scores, key=scores.get)
+        return {
+            "compiler": best,
+            "confidence": min(scores[best], 1.0),
+            "evidence": evidence,
         }
 
-    The CSV must have ``address`` and ``name`` columns.
-    """
-    for source in manifest.get("sources", []):
-        if source.get("type") != "binary_with_map":
-            continue
-        binary_path = source["binary"]
-        map_path = source["map"]
-        compiler = source.get("compiler", "")
+    # -- Build from manifest -----------------------------------------------
 
-        if not Path(binary_path).is_file():
-            print(f"sigdb: skipping missing binary: {binary_path}", file=sys.stderr)
-            continue
+    def build_from_manifest(
+        self, manifest_path: str | Path,
+        csv_paths: list[str | Path] | None = None,
+    ) -> int:
+        """Build the database from a JSON manifest.
 
-        try:
-            b = Binary(binary_path)
-        except Exception as e:
-            print(f"sigdb: failed to load {binary_path}: {e}", file=sys.stderr)
-            continue
+        manifest.json format:
+        {
+          "compiler": "msvc",
+          "source": "TombRaiderLegend",
+          "functions": [
+            {
+              "name": "func_name",
+              "va": "0x401000",
+              "binary": "trl.exe"
+            },
+            ...
+          ]
+        }
+        """
+        manifest_path = Path(manifest_path)
+        with open(manifest_path) as f:
+            manifest = json.load(f)
 
-        with open(map_path, newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                va = int(row["address"], 0)
-                name = row["name"]
-                category = _categorize_name(name)
-                source_name = Path(binary_path).name
+        compiler = manifest.get("compiler", "")
+        source = manifest.get("source", str(manifest_path))
+        category = manifest.get("category", "")
+        added = 0
 
-                # Byte sig
-                bsig = extract_byte_sig(b, va)
-                if bsig is not None:
-                    pattern, mask, tail_crc, func_size = bsig
-                    db.add_byte_sig(
-                        name=name, pattern=pattern, mask=mask,
-                        func_size=func_size, tail_crc=tail_crc,
-                        compiler=compiler, source=source_name,
-                        category=category,
-                    )
+        # Optional: load address overrides from CSV
+        addr_overrides: dict[str, int] = {}
+        for csv_path in (csv_paths or []):
+            with open(csv_path, newline="") as cf:
+                for row in csv.DictReader(cf):
+                    addr_overrides[row["name"]] = int(row["va"], 16)
 
-                # Structural sig
-                ssig = extract_structural_sig(b, va)
-                if ssig is not None:
-                    db.add_structural_sig(
-                        name=name, compiler=compiler,
-                        source=source_name, category=category,
-                        **ssig,
-                    )
+        for func in manifest.get("functions", []):
+            name = func["name"]
+            binary_path = Path(manifest_path).parent / func["binary"]
+            if not binary_path.exists():
+                print(f"  WARNING: binary not found: {binary_path}")
+                continue
 
+            va = addr_overrides.get(name, int(func.get("va", "0"), 16))
+            if not va:
+                print(f"  WARNING: no VA for {name}")
+                continue
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+            try:
+                b = Binary(str(binary_path))
+                code = b.read_va(va, 256)
+                if len(code) < 32:
+                    print(f"  WARNING: too little code for {name} @ 0x{va:X}")
+                    continue
 
-def _masked_eq(code: bytes, pattern: bytes, mask: bytes) -> bool:
-    """Compare code against pattern with mask (0xFF = must match, 0x00 = wildcard)."""
-    for c, p, m in zip(code, pattern, mask):
-        if (c & m) != (p & m):
-            return False
-    return True
+                # Compute mask: non-relocation bytes are 0xFF, relocation bytes are 0x00
+                # Simple heuristic: mask out 4-byte aligned sequences that look like pointers
+                mask = bytearray(b"\xFF" * len(code))
+                for i in range(0, len(code) - 3, 1):
+                    candidate = int.from_bytes(code[i:i+4], "little")
+                    if b.base <= candidate < b.base + b.pe.OPTIONAL_HEADER.SizeOfImage:
+                        mask[i:i+4] = b"\x00\x00\x00\x00"
 
+                func_size = func.get("size", 0)
+                tail_crc = _compute_tail_crc(code)
 
-def _scan_for_pattern(data: bytes, pattern: bytes, mask: bytes) -> bool:
-    """Scan *data* for *pattern* with *mask*. Returns True on first hit."""
-    plen = len(pattern)
-    if not mask:
-        return pattern in data
-    for i in range(len(data) - plen + 1):
-        if _masked_eq(data[i:i + plen], pattern, mask):
-            return True
-    return False
+                self.add_byte_sig(
+                    name=name,
+                    pattern=bytes(code[:32]),
+                    mask=bytes(mask[:32]),
+                    func_size=func_size,
+                    tail_crc=tail_crc,
+                    compiler=compiler,
+                    source=source,
+                    category=category,
+                )
+                added += 1
+            except Exception as exc:
+                print(f"  ERROR: {name}: {exc}")
 
-
-# ---------------------------------------------------------------------------
-# Download helpers
-# ---------------------------------------------------------------------------
-
-def _download_file(url: str, dest: str) -> None:
-    """Download a file from *url* to *dest* with progress."""
-    dest_path = Path(dest)
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
-    req = urllib.request.Request(url)
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        data = resp.read()
-    dest_path.write_bytes(data)
-    print(f"  {dest_path.name} ({len(data):,} bytes)")
-
-
-def _pull_sources(repo: str, dest_dir: str) -> None:
-    """Download source files listed in the HF repo's manifest.json."""
-    manifest_url = _HF_URL_TEMPLATE.format(repo=repo, path="manifest.json")
-    req = urllib.request.Request(manifest_url)
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        manifest = json.loads(resp.read())
-
-    for rel_path in manifest.get("sources", []):
-        url = _HF_URL_TEMPLATE.format(repo=repo, path=rel_path)
-        dest = Path(dest_dir) / rel_path.removeprefix("sources/")
-        try:
-            _download_file(url, str(dest))
-        except urllib.error.HTTPError as e:
-            print(f"  WARNING: {rel_path}: {e}", file=sys.stderr)
+        return added
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
-def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="Signature database for TRL reverse engineering"
     )
-    sub = p.add_subparsers(dest="command", required=True)
+    sub = ap.add_subparsers(dest="command", required=True)
 
-    # -- build -------------------------------------------------------------
-    s = sub.add_parser("build", help="Build signature DB from manifest")
-    s.add_argument("manifest", help="JSON manifest file")
-    s.add_argument("-o", "--output", default="sigs.db",
-                   help="Output database path (default: sigs.db)")
+    # build
+    bp = sub.add_parser("build", help="Build signature DB from a manifest")
+    bp.add_argument("manifest", help="JSON manifest path")
+    bp.add_argument("-o", "--output", default=str(DEFAULT_DB_PATH),
+                    help="Output DB path")
+    bp.add_argument("--csv", nargs="*", default=[],
+                    help="Optional CSV address override files")
 
-    # -- scan --------------------------------------------------------------
-    s = sub.add_parser("scan", help="Scan a binary for known functions")
-    s.add_argument("binary", help="PE binary path")
-    s.add_argument("-d", "--db", default=str(DEFAULT_DB_PATH),
-                   help="Signature DB path (default: %(default)s)")
-    s.add_argument("--compiler", default="",
-                   help="Preferred compiler hint")
+    # scan
+    sp = sub.add_parser("scan", help="Scan a binary for known functions")
+    sp.add_argument("binary", help="PE binary path")
+    sp.add_argument("-d", "--db", default=str(DEFAULT_DB_PATH),
+                    help="Signature DB path")
+    sp.add_argument("--compiler", default="",
+                    help="Preferred compiler hint")
 
-    # -- identify ----------------------------------------------------------
-    s = sub.add_parser("identify", help="Identify a single function")
-    s.add_argument("binary", help="PE binary path")
-    s.add_argument("va", help="Function virtual address (hex)")
-    s.add_argument("-d", "--db", default=str(DEFAULT_DB_PATH),
-                   help="Signature DB path (default: %(default)s)")
-    s.add_argument("--compiler", default="",
-                   help="Preferred compiler hint")
+    # identify
+    ip = sub.add_parser("identify", help="Identify a single function")
+    ip.add_argument("binary", help="PE binary path")
+    ip.add_argument("va", help="Virtual address (hex)")
+    ip.add_argument("-d", "--db", default=str(DEFAULT_DB_PATH),
+                    help="Signature DB path")
+    ip.add_argument("--compiler", default="",
+                    help="Preferred compiler hint")
 
-    # -- fingerprint -------------------------------------------------------
-    s = sub.add_parser("fingerprint",
-                       help="Detect compiler from binary metadata")
-    s.add_argument("binary", help="PE binary path")
+    # fingerprint
+    fp = sub.add_parser("fingerprint", help="Fingerprint compiler of a binary")
+    fp.add_argument("binary", help="PE binary path")
 
-    # -- pull ---------------------------------------------------------------
-    s = sub.add_parser("pull", help="Download signature DB from HuggingFace")
-    s.add_argument("--sources", action="store_true",
-                   help="Also download source CSVs/TOMLs")
-    s.add_argument("--repo", default=_HF_REPO_DEFAULT,
-                   help=f"HuggingFace dataset repo (default: {_HF_REPO_DEFAULT})")
+    # pull
+    pp = sub.add_parser("pull", help="Pull signature DB from HuggingFace")
+    pp.add_argument("--repo", default=_HF_REPO_DEFAULT,
+                    help="HuggingFace repo (owner/name)")
+    pp.add_argument("--sources", action="store_true",
+                    help="Also pull source JSON files")
 
-    args = p.parse_args(argv)
+    args = ap.parse_args()
 
-    try:
-        _dispatch(args)
-    except (FileNotFoundError, OSError) as e:
-        print(f"sigdb: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
-def _dispatch(args: argparse.Namespace) -> None:
     if args.command == "build":
-        with open(args.manifest) as f:
-            manifest = json.load(f)
         db = SignatureDB(args.output)
-        build_from_manifest(db, manifest)
-        cur = db._conn.execute("SELECT COUNT(*) FROM byte_sigs")
-        bc = cur.fetchone()[0]
-        cur = db._conn.execute("SELECT COUNT(*) FROM structural_sigs")
-        sc = cur.fetchone()[0]
-        print(f"Built {args.output}: {bc} byte sigs, {sc} structural sigs")
+        n = db.build_from_manifest(args.manifest, args.csv)
+        print(f"Added {n} signatures to {args.output}")
         db.close()
 
     elif args.command == "scan":
         db = SignatureDB(args.db)
         b = Binary(args.binary)
         results = db.scan(b, args.compiler)
-        w = 16 if b.is_64 else 8
-        for va, m in sorted(results.items()):
-            print(f"  0x{va:0{w}X}  {m.name:40s} "
-                  f"{m.confidence:.0%} ({m.tier}) [{m.category}]")
-        print(f"\n{len(results)} / {len(b.func_table)} functions identified")
+        for va, m in results:
+            print(f"  0x{va:X}  {m.name}  ({m.tier}, {m.confidence:.0%})")
         db.close()
 
     elif args.command == "identify":
