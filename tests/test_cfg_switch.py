@@ -35,7 +35,7 @@ class TestResolveSwitch:
         code_at_1000 = cmp_bytes + ja_bytes + jmp_bytes
         # Pad to offset 0x100 for the jump table
         padding = b"\x90" * (0x100 - len(code_at_1000))
-        table_entries = struct.pack("<4I", 0x401010, 0x401014, 0x401018, 0x40101C  # noqa
+        table_entries = struct.pack("<4I", 0x401010, 0x401014, 0x401018, 0x40101C)  # noqa
         raw = code_at_1000 + padding + table_entries + b"\x00" * 0x100
 
         cs = Cs(CS_ARCH_X86, CS_MODE_32)
