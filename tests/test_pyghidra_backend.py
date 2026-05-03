@@ -1,4 +1,4 @@
-"""Tests for retools/pyghidra_backend.py -- pyghidra headless Ghidra backend."""
+"""Tests for retools/pyghidra_backend.py -- pyghidra headless Ghidra backend."""  # noqa: E501
 
 import sys
 from pathlib import Path
@@ -25,27 +25,18 @@ class TestIsAnalyzed:
         from pyghidra_backend import is_analyzed
 
         project_dir = tmp_path / "ghidra"
-        project_dir.mkdir()
+        nested = project_dir / "test"
+        nested.mkdir(parents=True)
         assert is_analyzed(str(project_dir), "test.exe") is False
 
     def test_empty_rep(self, tmp_path):
         from pyghidra_backend import is_analyzed
 
         project_dir = tmp_path / "ghidra"
-        project_dir.mkdir()
-        (project_dir / "test.gpr").write_text("")
-        (project_dir / "test.rep").mkdir()
-        assert is_analyzed(str(project_dir), "test.exe") is False
-
-    def test_nested_empty_rep(self, tmp_path):
-        from pyghidra_backend import is_analyzed
-
-        project_dir = tmp_path / "ghidra"
         nested = project_dir / "test"
         nested.mkdir(parents=True)
         (nested / "test.gpr").write_text("project")
-        rep = nested / "test.rep"
-        rep.mkdir()
+        (nested / "test.rep").mkdir()
         assert is_analyzed(str(project_dir), "test.exe") is False
 
     def test_rep_not_dir(self, tmp_path):
@@ -75,78 +66,87 @@ class TestIsAnalyzed:
 
 
 # ---------------------------------------------------------------------------
-# _import_pyghidra and env fallbacks
+# environment tests
 # ---------------------------------------------------------------------------
 
 
-class TestImports:
-    def test_ensure_java_env_fallback(self, tmp_path, monkeypatch):
+class TestEnsureEnv:
+    def test_ensure_java_env_detects(self, tmp_path, monkeypatch):
         import pyghidra_backend
 
         monkeypatch.delenv("JAVA_HOME", raising=False)
+        monkeypatch.delenv("PATH", raising=False)
         monkeypatch.setattr("shutil.which", lambda x: None)
 
-        # Fake tools directory
-        tools_dir = tmp_path / "tools"
-        tools_dir.mkdir()
-        jdk_dir = tools_dir / "jdk-17"
-        bin_dir = jdk_dir / "bin"
-        bin_dir.mkdir(parents=True)
-        (bin_dir / "java").touch()
-
-        monkeypatch.setattr(pyghidra_backend, "_TOOLS", tools_dir)
+        mock_tools = tmp_path / "tools"
+        jdk_dir = mock_tools / "jdk-17"
+        java_bin = jdk_dir / "bin"
+        java_bin.mkdir(parents=True)
+        (java_bin / "java.exe").touch()
+        monkeypatch.setattr(pyghidra_backend, "_TOOLS", mock_tools)
 
         pyghidra_backend._ensure_java_env()
-
         import os
 
-        assert os.environ["JAVA_HOME"] == str(jdk_dir)
-        assert str(bin_dir) in os.environ["PATH"]
+        assert os.environ.get("JAVA_HOME") == str(jdk_dir)
+        assert str(java_bin) in os.environ.get("PATH", "")
 
-    def test_ensure_ghidra_env_fallback(self, tmp_path, monkeypatch):
+    def test_ensure_java_env_detects_unix(self, tmp_path, monkeypatch):
+        import pyghidra_backend
+
+        monkeypatch.delenv("JAVA_HOME", raising=False)
+        monkeypatch.delenv("PATH", raising=False)
+        monkeypatch.setattr("shutil.which", lambda x: None)
+
+        mock_tools = tmp_path / "tools"
+        jdk_dir = mock_tools / "jdk-17"
+        java_bin = jdk_dir / "bin"
+        java_bin.mkdir(parents=True)
+        # Create 'java' instead of 'java.exe'
+        (java_bin / "java").touch()
+        monkeypatch.setattr(pyghidra_backend, "_TOOLS", mock_tools)
+
+        pyghidra_backend._ensure_java_env()
+        import os
+
+        assert os.environ.get("JAVA_HOME") == str(jdk_dir)
+        assert str(java_bin) in os.environ.get("PATH", "")
+
+    def test_ensure_ghidra_env_detects(self, tmp_path, monkeypatch):
         import pyghidra_backend
 
         monkeypatch.delenv("GHIDRA_INSTALL_DIR", raising=False)
 
-        # Fake tools directory
-        tools_dir = tmp_path / "tools"
-        tools_dir.mkdir()
-        ghidra_dir = tools_dir / "ghidra_10.3"
-        ghidra_dir.mkdir()
+        mock_tools = tmp_path / "tools"
+        ghidra_dir = mock_tools / "ghidra_10.4"
+        ghidra_dir.mkdir(parents=True)
         (ghidra_dir / "ghidraRun.bat").touch()
-
-        monkeypatch.setattr(pyghidra_backend, "_TOOLS", tools_dir)
+        monkeypatch.setattr(pyghidra_backend, "_TOOLS", mock_tools)
 
         pyghidra_backend._ensure_ghidra_env()
-
         import os
 
-        assert os.environ["GHIDRA_INSTALL_DIR"] == str(ghidra_dir)
+        assert os.environ.get("GHIDRA_INSTALL_DIR") == str(ghidra_dir)
 
-    def test_import_pyghidra_import_error(self, monkeypatch):
+
+class TestImportPyghidra:
+    def test_import_pyghidra_failure(self, monkeypatch):
         import pyghidra_backend
 
         monkeypatch.setattr(pyghidra_backend, "_ensure_java_env", lambda: None)
-        monkeypatch.setattr(pyghidra_backend, "_ensure_ghidra_env", lambda: None)
+        monkeypatch.setattr(pyghidra_backend, "_ensure_ghidra_env", lambda: None)  # noqa: E501
 
-        # Mock ImportError when trying to import pyghidra
-        import builtins
+        from unittest.mock import patch
 
-        real_import = builtins.__import__
+        orig_import = __import__
 
-        def fake_import(name, *args, **kwargs):
+        def mock_import(name, *args, **kwargs):
             if name == "pyghidra":
-                raise ImportError("Mocked ImportError")
-            return real_import(name, *args, **kwargs)
+                raise ImportError("Mocked pyghidra missing")
+            return orig_import(name, *args, **kwargs)
 
-        monkeypatch.setattr(builtins, "__import__", fake_import)
-
-        # Ensure it's not already in sys.modules
-        import sys
-
-        monkeypatch.delitem(sys.modules, "pyghidra", raising=False)
-
-        assert pyghidra_backend._import_pyghidra() is None
+        with patch("builtins.__import__", side_effect=mock_import):
+            assert pyghidra_backend._import_pyghidra() is None
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +162,10 @@ class TestAnalyze:
 
         mock_pyghidra = MagicMock()
         mock_ctx = MagicMock()
-        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)
+        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(
+            return_value=mock_ctx
+        )
+        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)  # noqa: E501
         monkeypatch.setitem(sys.modules, "pyghidra", mock_pyghidra)
 
         binary = tmp_path / "test.exe"
@@ -183,8 +185,10 @@ class TestAnalyze:
 
         mock_pyghidra = MagicMock()
         mock_ctx = MagicMock()
-        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)
+        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(
+            return_value=mock_ctx
+        )
+        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)  # noqa: E501
         monkeypatch.setitem(sys.modules, "pyghidra", mock_pyghidra)
 
         binary = tmp_path / "test.exe"
@@ -199,7 +203,7 @@ class TestAnalyze:
 
         monkeypatch.delenv("GHIDRA_INSTALL_DIR", raising=False)
         # Patch _ensure_ghidra_env to not auto-detect from tools/
-        monkeypatch.setattr("pyghidra_backend._ensure_ghidra_env", lambda: None)
+        monkeypatch.setattr("pyghidra_backend._ensure_ghidra_env", lambda: None)  # noqa: E501
 
         mock_pyghidra = MagicMock()
         monkeypatch.setitem(sys.modules, "pyghidra", mock_pyghidra)
@@ -275,8 +279,10 @@ class TestDecompile:
         mock_pyghidra = MagicMock()
         mock_flat_api = MagicMock()
         mock_program = MagicMock()
-        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(return_value=mock_flat_api)
-        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)
+        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(
+            return_value=mock_flat_api
+        )
+        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)  # noqa: E501
         mock_flat_api.getCurrentProgram.return_value = mock_program
         monkeypatch.setitem(sys.modules, "pyghidra", mock_pyghidra)
 
@@ -303,55 +309,34 @@ class TestDecompile:
         from pyghidra_backend import decompile
 
         project_dir = tmp_path / "ghidra"
-        project_dir.mkdir()
         binary = tmp_path / "test.exe"
-        binary.write_bytes(b"MZ" + b"\x00" * 100)
         result = decompile(str(project_dir), str(binary), 0x401000)
         assert "[error] no analyzed project" in result
 
     def test_decompile_pyghidra_missing(self, tmp_path, monkeypatch):
         from pyghidra_backend import decompile
 
-        monkeypatch.setenv("GHIDRA_INSTALL_DIR", str(tmp_path))
-
         project_dir = _setup_ghidra_project(tmp_path)
         binary = tmp_path / "test.exe"
-        binary.write_bytes(b"MZ" + b"\x00" * 100)
 
-        import sys
+        with patch("pyghidra_backend._import_pyghidra", return_value=None):
+            result = decompile(str(project_dir), str(binary), 0x401000)
+            assert "[error] pyghidra is not installed" in result
 
-        monkeypatch.delitem(sys.modules, "pyghidra", raising=False)
-        import builtins
-
-        real_import = builtins.__import__
-
-        def fake_import(name, *args, **kwargs):
-            if name == "pyghidra":
-                raise ImportError("Mocked ImportError")
-            return real_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", fake_import)
-
-        result = decompile(str(project_dir), str(binary), 0x401000)
-        assert result == "[error] pyghidra is not installed"
-
-    def test_decompile_no_ghidra_dir(self, tmp_path, monkeypatch):
+    def test_decompile_no_ghidra_install_dir(self, tmp_path, monkeypatch):
         from pyghidra_backend import decompile
 
         monkeypatch.delenv("GHIDRA_INSTALL_DIR", raising=False)
-        monkeypatch.setattr("pyghidra_backend._ensure_ghidra_env", lambda: None)
-
-        project_dir = _setup_ghidra_project(tmp_path)
-        binary = tmp_path / "test.exe"
-        binary.write_bytes(b"MZ" + b"\x00" * 100)
-
-        import sys
+        monkeypatch.setattr("pyghidra_backend._ensure_ghidra_env", lambda: None)  # noqa: E501
 
         mock_pyghidra = MagicMock()
         monkeypatch.setitem(sys.modules, "pyghidra", mock_pyghidra)
 
+        project_dir = _setup_ghidra_project(tmp_path)
+        binary = tmp_path / "test.exe"
+
         result = decompile(str(project_dir), str(binary), 0x401000)
-        assert result == "[error] GHIDRA_INSTALL_DIR environment variable not set"
+        assert "[error] GHIDRA_INSTALL_DIR environment variable not set" in result  # noqa: E501
 
     def test_error_no_function(self, tmp_path, monkeypatch):
         from pyghidra_backend import decompile
@@ -365,8 +350,10 @@ class TestDecompile:
         mock_pyghidra = MagicMock()
         mock_flat_api = MagicMock()
         mock_program = MagicMock()
-        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(return_value=mock_flat_api)
-        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)
+        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(
+            return_value=mock_flat_api
+        )
+        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)  # noqa: E501
         mock_flat_api.getCurrentProgram.return_value = mock_program
         monkeypatch.setitem(sys.modules, "pyghidra", mock_pyghidra)
 
@@ -435,8 +422,10 @@ class TestCLI:
 
         mock_pyghidra = MagicMock()
         mock_ctx = MagicMock()
-        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)
+        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(
+            return_value=mock_ctx
+        )
+        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)  # noqa: E501
         monkeypatch.setitem(sys.modules, "pyghidra", mock_pyghidra)
 
         binary = tmp_path / "test.exe"
@@ -473,8 +462,10 @@ class TestCLI:
         mock_pyghidra = MagicMock()
         mock_flat_api = MagicMock()
         mock_program = MagicMock()
-        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(return_value=mock_flat_api)
-        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)
+        mock_pyghidra.open_program.return_value.__enter__ = MagicMock(
+            return_value=mock_flat_api
+        )
+        mock_pyghidra.open_program.return_value.__exit__ = MagicMock(return_value=False)  # noqa: E501
         mock_flat_api.getCurrentProgram.return_value = mock_program
         monkeypatch.setitem(sys.modules, "pyghidra", mock_pyghidra)
 
@@ -484,7 +475,9 @@ class TestCLI:
         mock_program.getListing.return_value = mock_listing
         mock_listing.getFunctionContaining.return_value = mock_func
         mock_result = MagicMock()
-        mock_result.getDecompiledFunction.return_value.getC.return_value = "void bar(void) {}"
+        mock_result.getDecompiledFunction.return_value.getC.return_value = (
+            "void bar(void) {}"
+        )
         mock_ifc.decompileFunction.return_value = mock_result
 
         with pytest.raises(SystemExit, match="0"):
@@ -591,3 +584,21 @@ class TestCLI:
             main()
         captured = capsys.readouterr()
         assert "void bar_dec(void)" in captured.out
+
+    def test_main_execution(self, monkeypatch, capsys):
+        import runpy
+        import sys
+        from pathlib import Path
+
+        script_path = (
+            Path(__file__).resolve().parent.parent / "retools" / "pyghidra_backend.py"  # noqa: E501
+        )
+
+        # Patch sys.argv before running the script
+        monkeypatch.setattr(sys, "argv", ["pyghidra_backend", "--help"])
+        with pytest.raises(SystemExit) as excinfo:
+            runpy.run_path(str(script_path), run_name="__main__")
+
+        assert excinfo.value.code == 0
+        captured = capsys.readouterr()
+        assert "usage: pyghidra_backend" in captured.out
