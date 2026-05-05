@@ -2164,7 +2164,7 @@ static void TRL_ApplyTransformOverrides(WrappedDevice *self) {
         proj[i] = gameProj[i];
     }
 
-    /* H4 fix: lock View/Proj across frames to absorb sub-pixel camera jitter.
+    /* H4 fix: lock View/Proj across frames to absorb sub-pixel camera jitter
      * TRL updates the raw View/Proj matrices in game memory every frame with
      * small (~0.001..0.009) deltas even when the player is idle. Without the
      * lock, Remix sees a different W*V*P composite every frame and re-hashes
