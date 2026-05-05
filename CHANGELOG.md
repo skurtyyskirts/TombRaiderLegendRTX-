@@ -6,6 +6,64 @@ Full build history: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
 
 ---
 
+## [2026-05-05] BUILD-078 — Perf build: proxy CPU hot-path optimization
+
+### Objective
+Strip every byte of dead per-draw / per-frame work from the proxy now that hashes are stable and all 36 culling layers are disabled. Goal: maximum proxy CPU efficiency for the RTX 5090 path-traced runtime, **without touching `rtx.conf`** (user tunes Remix-side via the in-game menu X). Hash stability and the 36 culling-layer NOPs are preserved byte-for-byte.
+
+### Findings
+- `DIAG_ACTIVE(self)` macro (used at 11 per-draw / per-VS-write sites) calls `GetTickCount()` on every check, even after the 3-frame log window closes at 50s. Was burning a syscall per D3D9 draw call (~3,749 draws/scene × 60+ FPS) for the entire session.
+- The proxy was firing `SetTransform(WORLD)` + `SetTransform(VIEW)` + `SetTransform(PROJECTION)` **unconditionally on every FFP-routed draw** at two call sites (`TRL_ApplyTransformOverrides` and `S4_ExpandAndDraw`). View/Proj are typically constant within a frame; only World changes per object → ~2/3 of `SetTransform` calls are redundant.
+- `PinnedDraw_ReplayMissing` walks 512 entries every 60 frames and finds zero work post-capture (engine culling fully disabled means no draws are missing). Pure overhead.
+- Three diagnostic-logging blocks were running outside `#if DIAG_ENABLED` (frame summary, per-scene census, PostLatch). Now properly gated.
+- Build flags already optimal — `/O2 /Oi /fp:fast /GL /GS- /Zl + NDEBUG + /LTCG`. No room there.
+- `WD_SetTransform` already blocks all external V/P/W writes once `viewProjValid=1` ([d3d9_device.c:3936-3940](patches/TombRaiderLegend/proxy/d3d9_device.c)) → proxy is the **only** writer, so an "applied transforms" cache is authoritative.
+
+### Patches Applied (Build 078)
+- `DIAG_ENABLED 1 → 0` — preprocessor strips all 11 `#if DIAG_ENABLED` blocks (per-draw GetTickCount, VB lock + hex dump, 256-register zero-loop on Present, sprintf in SetVSConstantF, 8-stage texture iteration)
+- `PINNED_REPLAY_INTERVAL 60 → 600` — replay runs ~10× less often
+- `PERF_LOG_ENABLED 1` + `PERF_LOG_INTERVAL 600` — emits `PERF frames=600 ms=N fps=N` to `ffp_proxy.log` every ~10s (independent of DIAG so survives the strip)
+- New `appliedWorld[16]`, `appliedView[16]`, `appliedProj[16]` fields in `WrappedDevice` (zero-init via `HEAP_ZERO_MEMORY`)
+- New `TRL_ApplyTransformsCached` helper — does `memcmp(64)` per slot, fires `SetTransform` only on changed slots
+- Both `SetTransform`-3-call sites replaced with single helper call (`TRL_ApplyTransformOverrides`, `S4_ExpandAndDraw`)
+- Cache invalidated to zeros in `WD_Reset` (matches device's reset state)
+- Wrapped 3 residual diagnostic logging blocks in `#if DIAG_ENABLED` (frame summary, per-scene census S<n>, PostLatch)
+- Mirrored byte-identical to root [proxy/d3d9_device.c](proxy/d3d9_device.c) per `feedback_proxy_sync` (memory cites prior 8-day crash from missing this sync)
+
+### Test Results
+- Build 078: BUILT, DEPLOYED, AWAITING IN-GAME MEASUREMENT
+- DLL: 48,640 bytes (vs build 077's 56,320 bytes — −13.6% from dead-code strip)
+- Both proxy copies (`patches/TombRaiderLegend/proxy/` and root `proxy/`) byte-identical
+- Backup: `patches/TombRaiderLegend/backups/2026-05-05T045306Z_perf-build-pre/`
+
+### Risk Assessment
+- Hash stability: zero impact — matrix values delivered to D3D9/Remix are byte-identical to prior; only redundant calls are elided
+- Stage lights: zero impact — no anchor mesh hash changes
+- Culling: zero impact — all 36 culling-layer NOPs intact
+- Cold launch: zero impact — `WD_Reset` invalidation keeps cache correct across device reset
+
+### Open Questions / Next Steps
+- Run hash-stability test with `python patches/TombRaiderLegend/run.py test --build` to confirm:
+  - All hash PASS criteria still met
+  - `PERF` lines appearing in `ffp_proxy.log`
+- Capture an FPS baseline via `PERF_LOG` or NVIDIA overlay for future delta measurement
+- Pursue next-tier optimizations from [TRL tests/build-078-perf-build/OPTIMIZATION_CANDIDATES.md](TRL%20tests/build-078-perf-build/OPTIMIZATION_CANDIDATES.md):
+  1. BeginScene anti-cull stamping → once-per-frame (needs `livetools memwatch` verification first)
+  2. PGO (Profile-Guided Optimization) — 5-10% on hot paths
+  3. `s4VBCache` linear scan → hash map
+  4. `WrappedDevice` struct field gating with `#if DIAG_ENABLED` (deferred from build 078, ~2KB cache footprint)
+  5. dxvk.conf tuning (`d3d9.maxFrameLatency=1`, `dxvk.numCompilerThreads=0`)
+
+### Handoff Materials
+[`TRL tests/build-078-perf-build/`](TRL%20tests/build-078-perf-build/) contains:
+- `SUMMARY.md` — this build's full analysis
+- `HOTPATH_AUDIT.md` — pre-build per-draw / per-frame cost map
+- `OPTIMIZATION_CANDIDATES.md` — ranked list of optimizations not yet implemented
+- `proxy_changes.diff` — unified diff vs build 077
+- `proxy/` — full source snapshot (5,339 lines) + `d3d9.dll` binary
+
+---
+
 ## [2026-04-13] BUILDS-076-077 — Crash protections restored, cold launch stable
 
 ### Objective

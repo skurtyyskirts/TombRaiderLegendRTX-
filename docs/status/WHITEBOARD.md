@@ -1,7 +1,21 @@
 # TRL RTX Remix — Live Whiteboard
 
-**Updated:** 2026-04-15 · **Builds:** 001–077 (003–015, 034, 043, 048–063 not preserved)  
-**Goal:** Stable hashes, full geometry submission, Remix lights anchored to stage geometry
+**Updated:** 2026-05-05 · **Builds:** 001–078 (003–015, 034, 043, 048–063 not preserved)
+**Goal:** Stable hashes, full geometry submission, refreshed anchor hashes, and **maximum proxy CPU efficiency for the RTX 5090 path-traced runtime**
+
+---
+
+## Active Workstream — Performance (build 078+)
+
+After build 077 stabilized cold launch, the focus shifted to proxy CPU efficiency. The proxy was doing real per-draw work that paid no value once hashes stabilized and engine culling was fully disabled. Build 078 is the first perf build:
+
+- **DLL size**: 56,320 → 48,640 bytes (–13.6%) from dead-code stripping
+- **DIAG_ENABLED 1 → 0** — eliminates per-draw `GetTickCount()` syscall on every D3D9 method intercept
+- **PINNED_REPLAY_INTERVAL 60 → 600** — replay scan runs ~10× less often (engine culling off, replay finds nothing anyway)
+- **Matrix cache** for `SetTransform` — proxy was firing 3 SetTransform calls per FFP draw at two sites unconditionally; now compares against last-applied via `memcmp` and only pushes the slots that actually changed. Eliminates ~2/3 of SetTransform vtable thunks (View/Proj typically constant within a frame)
+- **PERF_LOG instrumentation** — `ffp_proxy.log` now emits `PERF frames=600 ms=N fps=N` every ~10s for direct measurement without external overlay
+
+Snapshot + analysis: [`TRL tests/build-078-perf-build/`](../../TRL%20tests/build-078-perf-build/). Future research starts in [`OPTIMIZATION_CANDIDATES.md`](../../TRL%20tests/build-078-perf-build/OPTIMIZATION_CANDIDATES.md) and [`HOTPATH_AUDIT.md`](../../TRL%20tests/build-078-perf-build/HOTPATH_AUDIT.md).
 
 ---
 
@@ -13,8 +27,8 @@
 | FFP proxy DLL builds & chains | DONE | MSVC x86, chains to Remix d3d9 |
 | Transform pipeline (View/Proj/World) | DONE | View/Proj from game memory, World via WVP decomposition |
 | Asset hash stability (static camera) | DONE | `positions,indices,texcoords,geometrydescriptor` rule, session-reproducible |
-| Asset hash stability (with movement) | DONE | Lara model rock-solid; world geometry stable once culling fixed |
-| Automated test pipeline | DONE | Two-phase (hash debug + clean render), randomized movement |
+| Asset hash stability (camera pan) | DONE | Lara model rock-solid; world geometry stable during the retained hash-screening sweep |
+| Hash stability screening workflow | DONE | Two-phase (hash debug + clean render) via `run.py test-hash` |
 | Input delivery to DirectInput game | DONE | Scancode flag fix (build 018) |
 | Backface culling disabled | DONE | D3DCULL_NONE + cull globals stamped |
 | Frustum distance culling disabled | DONE | Threshold -1e30 + 11 NOP jumps inside 0x407150 (no RET — full function executes with all exits NOPed) |
@@ -26,9 +40,7 @@
 | `positions` required in asset hash | CONFIRMED | Build 047 proved removing positions causes catastrophic collision |
 | All light pipeline gates disabled | DONE | `Light_VisibilityTest`, sector count gate, RenderLights gate — re-enabled build 068, confirmed no crash |
 | Replacement asset pipeline (mod lights) | CONFIRMED (build 075) | Purple test light visible and stable; `user.conf` override fixed |
-| GREEN light stable at all positions | **FAILING** | Anchor hashes stale — building mesh IDs differ from mod.usda entries |
-| RED light stable at all positions | **FAILING** | Same root cause — stale hashes; fresh capture needed |
-| Remix light anchors hold on movement | **FAILING** | Hashes wrong; pipeline itself is confirmed working |
+| Current anchor hashes valid | **FAILING** | Building mesh IDs in `mod.usda` are stale; fresh capture needed |
 
 ---
 
@@ -299,11 +311,11 @@ At startup (before TR7.arg was used, or on any cold manual launch), the game ren
 
 ## Immediate Next Step
 
-> **Build 077: cold launch crash fixed. Game now runs stably from menu to level without TR7.arg. Stage lights still absent — anchor hashes in mod.usda are stale.**
+> **Build 077: cold launch crash fixed. Game now runs stably from menu to level without TR7.arg. Anchor hashes in mod.usda are still stale.**
 
 **One-step fix:**
 
-1. **Fresh Remix capture** — launch the game with the current proxy, load Peru, position Lara near the stage. Open the Remix Toolkit, enable hash debug view (debug view 277), and capture the scene. Identify the mesh hash IDs of the building geometry (the two columns/pillars that hold the red and green lights). Update `mod.usda` with the new hashes and re-test.
+1. **Fresh Remix capture** — launch the game with the current proxy, load Peru, position Lara near the stage. Open the Remix Toolkit, enable hash debug view (debug view 277), and capture the scene. Identify the current building mesh hash IDs, update `mod.usda`, then rerun `test-hash`.
 
 **Stale hashes currently in `mod.usda`** — these need to be replaced after a fresh capture:
 
@@ -330,9 +342,9 @@ At startup (before TR7.arg was used, or on any cold manual launch), the game ren
 Fresh Remix capture near stage
 ├── Get new building mesh hashes from Toolkit
 ├── Update mod.usda with new hashes
-└── Re-test
-    ├── Red + green lights visible → PASS
-    └── Still no lights
+└── Re-run test-hash
+    ├── Hash/debug diagnostics still look healthy → continue manual replacement verification
+    └── Replacement assets still do not bind
         ├── Verify hash debug shows building geometry in frame
         │   ├── Not visible → building not in frame / too far → reposition Lara
         │   └── Visible → hash in Toolkit doesn't match proxy's hash → hash rule mismatch

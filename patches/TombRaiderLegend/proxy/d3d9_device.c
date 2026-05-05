@@ -194,10 +194,6 @@ extern void log_floats_dec(const char *prefix, float *data, unsigned int count);
 
 /* VP inverse cache: only recompute when camera moves more than this */
 #define VP_CHANGE_THRESHOLD     1e-4f
-/* H4 jitter lock: observed per-frame View/Proj drift is ~0.001..0.009 on a
- * static camera. This threshold is well above the jitter but well below the
- * delta produced by actual camera motion (> 0.05 per strafe/turn). */
-#define H4_VP_LOCK_THRESHOLD    1.5e-2f
 /* World matrix quantization grid */
 #define WORLD_QUANT_GRID        1e-3f
 /* Screen-space quad detection: WVP vs Proj tolerance */
@@ -295,11 +291,15 @@ typedef struct {
 /* ---- Diagnostic logging ---- */
 #define DIAG_LOG_FRAMES 3
 #define DIAG_DELAY_MS 50000   /* 50 seconds after device creation */
-#define DIAG_ENABLED 1
+#define DIAG_ENABLED 0        /* perf build: strip per-draw GetTickCount + log paths */
 
 #define DIAG_ACTIVE(self) \
     (DIAG_ENABLED && (self)->diagLoggedFrames < DIAG_LOG_FRAMES && \
      GetTickCount() - (self)->createTick >= DIAG_DELAY_MS)
+
+/* ---- Performance logging (independent of DIAG, survives DIAG=0) ---- */
+#define PERF_LOG_ENABLED 1     /* set to 0 for the final ship build once tuning done */
+#define PERF_LOG_INTERVAL 600  /* frames between FPS samples (~10s @60fps, ~5s @120fps) */
 
 /* ---- D3D9 Constants ---- */
 
@@ -555,7 +555,7 @@ enum {
  */
 #define PINNED_DRAW_MAX     512     /* max unique draws to cache */
 #define PINNED_CAPTURE_FRAMES 120   /* capture during first 120 frames (~2 sec) */
-#define PINNED_REPLAY_INTERVAL 60   /* replay missing draws every 60 frames */
+#define PINNED_REPLAY_INTERVAL 600  /* replay missing draws every 600 frames; engine culling is fully disabled so replay rarely has work */
 
 typedef struct PinnedDraw {
     /* Fingerprint for dedup */
@@ -674,6 +674,10 @@ typedef struct WrappedDevice {
     int skyWarmupStarted;
     SkyIsoEntry skyIso[SKY_ISO_MAX];
     int skyIsoCount;
+    void *skyIsoLastOrigTex;        /* fast-path for consecutive same-texture draws */
+    SkyIsoEntry *skyIsoLastEntry;   /* cached match for skyIsoLastOrigTex */
+    unsigned int skyIsoRefreshScene;/* last scene that recomputed candidate ranking */
+    int skyIsoRefreshDirty;         /* observations changed since last ranking pass */
 
     /* Stream source tracking (streams 0-3) */
     void *streamVB[4];
@@ -698,6 +702,9 @@ typedef struct WrappedDevice {
     int diagTexUniq[8];
     unsigned int createTick;
     unsigned int diagLoggedFrames;
+    /* PERF_LOG: independent of DIAG, used to emit periodic FPS samples to ffp_proxy.log */
+    unsigned int perfLastTick;
+    unsigned int perfLastFrame;
     unsigned int drawCallCount;
     unsigned int sceneCount;
     unsigned int skySceneCounter;   /* global BeginScene count (not reset per frame) */
@@ -732,12 +739,13 @@ typedef struct WrappedDevice {
     float savedView[16];
     float savedProj[16];
 
-    /* H4 jitter lock — freezes View/Proj when live values are within
-     * H4_VP_LOCK_THRESHOLD of the locked snapshot. Absorbs TRL's per-frame
-     * sub-pixel camera jitter so Remix's generation hash stays stable. */
-    float vpLockView[16];
-    float vpLockProj[16];
-    int   vpLockValid;
+    /* Last *applied* transforms (cache of values pushed via SetTransform).
+     * Used to skip redundant SetTransform calls when the matrix is unchanged
+     * — View/Projection are typically constant within a frame, and World is
+     * frequently identical across consecutive draws of the same object. */
+    float appliedWorld[16];
+    float appliedView[16];
+    float appliedProj[16];
 
     /* SHORT4 → FLOAT3 position expansion (CPU-side FFP conversion).
      * Eliminates useVertexCapture dependency for hash stability. */
@@ -1364,13 +1372,27 @@ static void SkyIso_Clear(WrappedDevice *self) {
     self->skyIsoCount = 0;
     self->skyWarmupStarted = 0;
     self->skyWarmupStartScene = 0;
+    self->skyIsoLastOrigTex = NULL;
+    self->skyIsoLastEntry = NULL;
+    self->skyIsoRefreshScene = 0;
+    self->skyIsoRefreshDirty = 0;
 }
 
 static SkyIsoEntry *SkyIso_FindOrCreateEntry(WrappedDevice *self, void *origTex, int createIfMissing) {
     int i;
+
+    if (self->skyIsoLastOrigTex == origTex &&
+        self->skyIsoLastEntry &&
+        self->skyIsoLastEntry->origTex == origTex) {
+        return self->skyIsoLastEntry;
+    }
+
     for (i = 0; i < self->skyIsoCount; i++) {
-        if (self->skyIso[i].origTex == origTex)
+        if (self->skyIso[i].origTex == origTex) {
+            self->skyIsoLastOrigTex = origTex;
+            self->skyIsoLastEntry = &self->skyIso[i];
             return &self->skyIso[i];
+        }
     }
     if (!createIfMissing || self->skyIsoCount >= SKY_ISO_MAX)
         return NULL;
@@ -1392,6 +1414,8 @@ static SkyIsoEntry *SkyIso_FindOrCreateEntry(WrappedDevice *self, void *origTex,
         entry->contaminatedLastScene = 0;
         entry->contaminatedScore = 0;
         entry->contaminationFlags = 0;
+        self->skyIsoLastOrigTex = origTex;
+        self->skyIsoLastEntry = entry;
         return entry;
     }
 }
@@ -1454,6 +1478,7 @@ static void SkyIso_RecordObservation(WrappedDevice *self, SkyIsoEntry *entry, un
             entry->candidateMaxPrims = pc;
     }
     SkyIso_AccumulateScore(score, nv, pc);
+    self->skyIsoRefreshDirty = 1;
 }
 
 static int SkyIso_IsCandidateBaseDraw(WrappedDevice *self, unsigned int nv, unsigned int pc, unsigned int stage);
@@ -1574,6 +1599,11 @@ static void SkyIso_RefreshCandidateSet(WrappedDevice *self) {
     unsigned int bestScenes = 0;
     unsigned int bestScore = 0;
 
+    /* Ranking only needs scene cadence; redoing it on every eligible draw is
+     * wasted work once the current scene has already been classified. */
+    if (!self->skyIsoRefreshDirty || self->skyIsoRefreshScene == self->skySceneCounter)
+        return;
+
     for (i = 0; i < self->skyIsoCount; i++) {
         prevCandidate[i] = self->skyIso[i].candidate;
         self->skyIso[i].candidate = 0;
@@ -1618,6 +1648,9 @@ static void SkyIso_RefreshCandidateSet(WrappedDevice *self) {
             log_hex("SkyIso: promoted contamination flags=", entry->contaminationFlags);
         }
     }
+
+    self->skyIsoRefreshScene = self->skySceneCounter;
+    self->skyIsoRefreshDirty = 0;
 }
 
 static int SkyIso_CloneTexture(WrappedDevice *self, SkyIsoEntry *entry) {
@@ -2136,6 +2169,35 @@ static void PinnedDraw_ReleaseAll(WrappedDevice *self) {
 }
 
 /*
+ * Cached SetTransform: skip pushing matrices that are byte-identical to
+ * the previously applied value. View/Projection rarely change within a
+ * frame; World is frequently identical across consecutive draws of the
+ * same object. Eliminates the bulk of SetTransform vtable thunks.
+ *
+ * The proxy is the only path to the device's transform state once
+ * viewProjValid=1 (WD_SetTransform blocks all external V/P/W writes), so
+ * appliedWorld/View/Proj are an authoritative cache. They are reset to
+ * zero in WD_Reset to handle device-resource invalidation.
+ */
+static __inline void TRL_ApplyTransformsCached(WrappedDevice *self,
+    float *world, float *view, float *proj)
+{
+    typedef int (__stdcall *FN_SetTransform)(void*, unsigned int, float*);
+    void **vt = RealVtbl(self);
+    FN_SetTransform setT = (FN_SetTransform)vt[SLOT_SetTransform];
+    int needWorld = memcmp(self->appliedWorld, world, 64) != 0;
+    int needView  = memcmp(self->appliedView,  view,  64) != 0;
+    int needProj  = memcmp(self->appliedProj,  proj,  64) != 0;
+    if (!needWorld && !needView && !needProj)
+        return;
+    self->transformOverrideActive = 1;
+    if (needWorld) { memcpy(self->appliedWorld, world, 64); setT(self->pReal, D3DTS_WORLD,      world); }
+    if (needView)  { memcpy(self->appliedView,  view,  64); setT(self->pReal, D3DTS_VIEW,       view);  }
+    if (needProj)  { memcpy(self->appliedProj,  proj,  64); setT(self->pReal, D3DTS_PROJECTION, proj);  }
+    self->transformOverrideActive = 0;
+}
+
+/*
  * Read View and Projection from game memory, decompose World from WVP.
  *
  * TRL fuses W*V*P into c0-c3 (column-major). We read the authoritative
@@ -2162,23 +2224,6 @@ static void TRL_ApplyTransformOverrides(WrappedDevice *self) {
     for (i = 0; i < 16; i++) {
         view[i] = gameView[i];
         proj[i] = gameProj[i];
-    }
-
-    /* H4 fix: lock View/Proj across frames to absorb sub-pixel camera jitter.
-     * TRL updates the raw View/Proj matrices in game memory every frame with
-     * small (~0.001..0.009) deltas even when the player is idle. Without the
-     * lock, Remix sees a different W*V*P composite every frame and re-hashes
-     * geometry under rtx.geometryGenerationHashRuleString, producing per-frame
-     * position jitter (earthquake) and unwelded-looking triangle seams. */
-    if (self->vpLockValid &&
-        !mat4_changed(view, self->vpLockView, H4_VP_LOCK_THRESHOLD) &&
-        !mat4_changed(proj, self->vpLockProj, H4_VP_LOCK_THRESHOLD)) {
-        memcpy(view, self->vpLockView, 64);
-        memcpy(proj, self->vpLockProj, 64);
-    } else {
-        memcpy(self->vpLockView, view, 64);
-        memcpy(self->vpLockProj, proj, 64);
-        self->vpLockValid = 1;
     }
 
     /* Cache the first valid 3D projection for quad detection.
@@ -2280,12 +2325,9 @@ static void TRL_ApplyTransformOverrides(WrappedDevice *self) {
     memcpy(self->savedView, view, 64);
     memcpy(self->savedProj, proj, 64);
 
-    /* Apply all three transforms (rtx.fusedWorldViewMode=0 treats them independently) */
-    self->transformOverrideActive = 1;
-    ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_WORLD, world);
-    ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_VIEW, view);
-    ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_PROJECTION, proj);
-    self->transformOverrideActive = 0;
+    /* Apply all three transforms (rtx.fusedWorldViewMode=0 treats them independently).
+     * Cached helper skips redundant SetTransform calls when the matrix hasn't changed. */
+    TRL_ApplyTransformsCached(self, world, view, proj);
 
     self->viewProjDirty = 0;
     self->worldDirty = 0;
@@ -2766,12 +2808,8 @@ static int S4_ExpandAndDraw(WrappedDevice *self,
      * and TRL's world PS expects standard FFP interpolators (t0, v0). */
     ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, NULL);
 
-    /* Set transforms */
-    self->transformOverrideActive = 1;
-    ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_WORLD, world);
-    ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_VIEW, view);
-    ((FN_SetTransform)vt[SLOT_SetTransform])(self->pReal, D3DTS_PROJECTION, proj);
-    self->transformOverrideActive = 0;
+    /* Set transforms (cached helper skips when matrix unchanged from last applied) */
+    TRL_ApplyTransformsCached(self, world, view, proj);
 
     TRL_ApplyFFPDrawState(self, 1);
 
@@ -3171,10 +3209,14 @@ static int __stdcall WD_Reset(WrappedDevice *self, void *pPresentParams) {
     self->lastVS = NULL;
     self->lastPS = NULL;
     self->viewProjValid = 0;
-    self->vpLockValid = 0;
     self->ffpSetup = 0;
     self->worldDirty = 0;
     self->viewProjDirty = 0;
+    /* Invalidate cached "applied" transforms — device resource state is reset */
+    {
+        int z;
+        for (z = 0; z < 16; z++) { self->appliedWorld[z] = 0.0f; self->appliedView[z] = 0.0f; self->appliedProj[z] = 0.0f; }
+    }
     self->psConstDirty = 0;
     self->ffpActive = 0;
     self->vpInverseValid = 0;
@@ -3236,6 +3278,7 @@ static int __stdcall WD_Present(WrappedDevice *self, void *a, void *b, void *c, 
     }
 #endif
 
+#if DIAG_ENABLED
     /* Log frame draw routing summary every 60 frames (~1/sec), no delay */
     if (self->frameSummaryCount < 10 && self->frameCount > 0 && (self->frameCount % 60) == 0) {
         log_str("== FRAME ");
@@ -3248,6 +3291,7 @@ static int __stdcall WD_Present(WrappedDevice *self, void *a, void *b, void *c, 
         log_int("  vpValid=", self->viewProjValid);
         self->frameSummaryCount++;
     }
+#endif
 
     /* Close capture window after PINNED_CAPTURE_FRAMES */
     if (self->frameCount == PINNED_CAPTURE_FRAMES && !self->pinnedCaptureComplete) {
@@ -3266,6 +3310,24 @@ static int __stdcall WD_Present(WrappedDevice *self, void *a, void *b, void *c, 
     }
 
     self->frameCount++;
+
+#if PERF_LOG_ENABLED
+    /* Emit one FPS sample every PERF_LOG_INTERVAL frames. Cost: 1 GetTickCount per interval. */
+    if ((self->frameCount - self->perfLastFrame) >= PERF_LOG_INTERVAL) {
+        unsigned int nowTick = GetTickCount();
+        unsigned int dtMs = nowTick - self->perfLastTick;
+        unsigned int frames = self->frameCount - self->perfLastFrame;
+        unsigned int fps = (dtMs > 0) ? (frames * 1000u) / dtMs : 0u;
+        log_str("PERF ");
+        log_int("frames=", (int)frames);
+        log_int(" ms=", (int)dtMs);
+        log_int(" fps=", (int)fps);
+        log_str("\r\n");
+        self->perfLastTick = nowTick;
+        self->perfLastFrame = self->frameCount;
+    }
+#endif
+
     self->ffpSetup = 0;
     self->ffpActive = 0;
     self->drawCallCount = 0;
@@ -3355,6 +3417,7 @@ static int __stdcall WD_EndScene(WrappedDevice *self) {
     typedef int (__stdcall *FN)(void*);
     unsigned int sceneDrawsProcessed = self->drawsProcessed;
 
+#if DIAG_ENABLED
     /* Log per-scene draw counts for culling investigation.
      * Start after scene 500 (past startup), log every 2nd scene for 1000 scenes. */
     if (self->drawsTotal > 0 && self->sceneCount > 500 && self->sceneCount < 1500 && (self->sceneCount % 2) == 0) {
@@ -3366,6 +3429,7 @@ static int __stdcall WD_EndScene(WrappedDevice *self) {
         log_int(" q=", self->transformsBlocked);
         log_str("\r\n");
     }
+#endif
     if (!self->levelSceneDetected && TRL_IsMenuLikeScene(self)) {
         if (!self->sawMenuScene)
             TRL_LogTransitionScene(self, "Transition: front-end scene observed");
@@ -3383,6 +3447,7 @@ static int __stdcall WD_EndScene(WrappedDevice *self) {
         TRL_LogTransitionScene(self, "Transition: gameplay-like scene seen before latch");
     }
 
+#if DIAG_ENABLED
     if (self->levelSceneDetected && self->drawsTotal > 0 &&
         self->postLatchSceneLogsRemaining > 0) {
         log_int("PostLatch scene=", (int)self->sceneCount);
@@ -3394,6 +3459,7 @@ static int __stdcall WD_EndScene(WrappedDevice *self) {
         log_str("\r\n");
         self->postLatchSceneLogsRemaining--;
     }
+#endif
     self->lastSceneDrawsProcessed = sceneDrawsProcessed;
     /* Reset per-scene draw counters */
     if (self->drawsTotal > 0) {
@@ -5155,7 +5221,6 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     w->lastVS = NULL;
     w->lastPS = NULL;
     w->viewProjValid = 0;
-    w->vpLockValid = 0;
     TRL_ResetTexture0AnimationState(w);
     w->lastDecl = NULL;
     w->curDeclIsSkinned = 0;
@@ -5193,6 +5258,10 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     w->skyWarmupStartScene = 0;
     w->skyWarmupStarted = 0;
     w->skyIsoCount = 0;
+    w->skyIsoLastOrigTex = NULL;
+    w->skyIsoLastEntry = NULL;
+    w->skyIsoRefreshScene = 0;
+    w->skyIsoRefreshDirty = 0;
     w->skySceneCounter = 0;
     w->lastSceneDrawsProcessed = 0;
     w->postLatchSceneLogsRemaining = 0;
@@ -5202,6 +5271,8 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     w->replayFeaturesEnabled = 0;
     { int ts; for (ts = 0; ts < 8; ts++) w->diagTexUniq[ts] = 0; }
     w->createTick = GetTickCount();
+    w->perfLastTick = w->createTick;
+    w->perfLastFrame = 0;
     w->diagLoggedFrames = 0;
 
     /* Read proxy.ini config */
