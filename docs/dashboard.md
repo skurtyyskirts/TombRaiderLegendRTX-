@@ -1,6 +1,6 @@
 # skurtyyskirts ecosystem status
 
-_Generated 2026-05-16 13:49 UTC_
+_Generated 2026-05-17 13:49 UTC_
 
 | Repo | Last commit | Open PRs | Open issues | Latest release |
 |---|---|---|---|---|
@@ -8,7 +8,7 @@ _Generated 2026-05-16 13:49 UTC_
 | [HeavyRainRTX](https://github.com/skurtyyskirts/HeavyRainRTX) | {"message" | ? | ? | none |
 | [TombRaiderUnderworldRTX](https://github.com/skurtyyskirts/TombRaiderUnderworldRTX) | {"message" | ? | ? | none |
 | [StrangleholdRTX](https://github.com/skurtyyskirts/StrangleholdRTX) | {"message" | ? | ? | none |
-| [TombRaiderLegendRTX-](https://github.com/skurtyyskirts/TombRaiderLegendRTX-) | 2026-05-15 | 30 | 30 | v0.1.0 |
+| [TombRaiderLegendRTX-](https://github.com/skurtyyskirts/TombRaiderLegendRTX-) | 2026-05-16 | 30 | 30 | v0.1.0 |
 | [Substance2Remix](https://github.com/skurtyyskirts/Substance2Remix) | 2026-05-15 | 30 | 0 | v0.5.0 |
 | [Substance2Duplicate](https://github.com/skurtyyskirts/Substance2Duplicate) | {"message" | ? | ? | none |
 | [LANoireRTX](https://github.com/skurtyyskirts/LANoireRTX) | {"message" | ? | ? | none |
@@ -30,11 +30,11 @@ _Generated 2026-05-16 13:49 UTC_
 {"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#list-commits","status":"404"}- (no access)
 
 ### TombRaiderLegendRTX-
+- [e6cacdb](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/e6cacdbef5057899da37aefe3df8b1ddbe70eb4c) dashboard: update 2026-05-16
 - [be86a62](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/be86a6295083cb4a2005b37b6af0405b700225e3) dashboard: update 2026-05-15
 - [598d0cd](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/598d0cd5e5676273592fd816c0a24136d7a1d9fe) fix: model claude-opus-4-6, add output dirs for workflow artifacts
 - [eaed052](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/eaed0528cb2d79918100577eae457722ad13221d) chore(deps): bump the python group with 4 updates (#258)
 - [3cdbc59](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/3cdbc59f296ea25ad615a97e807243769c2f209d) ci: fix release-drafter to only run on push to default branch (#257)
-- [c6a32b4](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/c6a32b4e50b4b9c7848d9a074e3ca10c5035b82b) ci: enable GitHub Pro automation pack (#256)
 
 ### Substance2Remix
 - [9afb083](https://github.com/skurtyyskirts/Substance2Remix/commit/9afb083fe629dec0c3e046cb80a36aec0c142961) Add Dependabot config for github-actions updates (#106)
