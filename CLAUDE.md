@@ -196,9 +196,12 @@ See [TRL tests/build-079-normalize-skinned-decl-FAIL-shader-route-mismatch/SUMMA
 | `autopatch/` | Autonomous hypothesis-test-patch loop |
 | `automation/` | Screenshot automation and test replay infrastructure |
 | `patches/TombRaiderLegend/` | Runtime patches applied by proxy |
-| `docs/` | Full documentation — research, reference, guides |
-| `docs/status/WHITEBOARD.md` | **Live status** — 36-layer culling map, build history, decision tree |
-| `docs/status/TEST_STATUS.md` | Build-by-build pass/fail results |
+| `wiki/` | **Project wiki** — consolidated knowledge base (also at github.com/skurtyyskirts/TombRaiderLegendRTX-/wiki) |
+| `wiki/Current-Status.md` | **Live status** — 36-layer culling map, build history, decision tree |
+| `wiki/Build-History-Index.md` | Build-by-build pass/fail results |
+| `wiki/Dead-Ends.md` | Approaches tried and failed — **read before proposing experiments** |
+| `wiki/36-Layer-Culling-Map.md` | Canonical culling-layer inventory with addresses |
+| `wiki/Reverse-Engineering-Toolkit.md` | How to use retools / livetools / dx9tracer |
 | `TRL tests/` | Test build archive — every build with SUMMARY.md, screenshots, proxy log, source |
 | `TRL traces/` | Full-frame D3D9 API captures |
 | `rtx_remix_tools/` | RTX Remix integration utilities |
