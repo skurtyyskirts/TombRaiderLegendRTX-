@@ -22,7 +22,7 @@ on:
         default: ''
     secrets:
       ANTHROPIC_API_KEY:
-        required: true
+        required: false
 
 jobs:
   release-notes:
@@ -30,11 +30,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check API key
+        id: keycheck
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::ANTHROPIC_API_KEY not set; skipping release notes generation."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.keycheck.outputs.skip != 'true'
         with:
           fetch-depth: 0
       - name: Resolve range
         id: range
+        if: steps.keycheck.outputs.skip != 'true'
         env:
           INPUT_PREV: ${{ inputs.previous_tag }}
         run: |
@@ -53,6 +64,7 @@ jobs:
           fi
           head -c 200 /tmp/commits.txt
       - name: Generate notes
+        if: steps.keycheck.outputs.skip != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_MODEL: ${{ inputs.claude_model }}
@@ -93,6 +105,7 @@ jobs:
           Path('/tmp/notes.md').write_text(data['content'][0]['text'], encoding='utf-8')
           PYEOF
       - name: Create/update release
+        if: steps.keycheck.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.range.outputs.tag }}
