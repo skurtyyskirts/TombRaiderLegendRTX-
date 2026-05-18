@@ -738,10 +738,11 @@ typedef struct WrappedDevice {
 
     /* Skinned-decl normalization cache: maps an original skinned decl (which contains
      * BLENDWEIGHT+BLENDINDICES) → a clone with those two usages removed. The proxy
-     * swaps to the normalized decl ONLY for the Remix-facing null-VS FFP draw call
-     * (mirroring the existing VS-null-and-restore pattern). The game's own shader
-     * path keeps the original decl. Goal: stabilize the geometrydescriptor hash
-     * across LOD swaps and weight-type variance so Lara's asset hash stops drifting. */
+     * swaps to the normalized decl around the Remix-facing draw call (both the
+     * null-VS FFP path AND the shader-route path) so Remix's geometrydescriptor
+     * hash is stable across LOD swaps and weight-type variance. The original decl
+     * is restored immediately after the draw so the game's subsequent state-tracking
+     * sees no change. Goal: stop Lara's asset hash from drifting. */
     void *skinnedNormDeclOrig[64];
     void *skinnedNormDeclFixed[64];
     int   skinnedNormDeclCount;
@@ -3691,28 +3692,38 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
                 if ((self->curDeclPosType == D3DDECLTYPE_FLOAT3 && float3Route == FLOAT3_ROUTE_SHADER) ||
                     shaderRouteShort4) {
                     /* Shader route: keep VS/PS bound for FLOAT3 draws and for animated/deformed
-                     * SHORT4 draws that rely on shader-side UV scroll, morphing, or extra streams. */
-                    hr = ((FN)RealVtbl(self)[SLOT_DrawIndexedPrimitive])(self->pReal, pt, bvi, mi, nv, si, pc);
+                     * SHORT4 draws that rely on shader-side UV scroll, morphing, or extra streams.
+                     * For skinned draws we swap to a normalized decl (no BLENDWEIGHT/BLENDINDICES)
+                     * around the DIP so Remix's geometrydescriptor hash is stable across LOD swaps
+                     * and weight-type variance, even on the shader path (build 080). */
+                    typedef int (__stdcall *FN_SetDecl)(void*, void*);
+                    void **vt2 = RealVtbl(self);
+                    int swapShaderDecl = (self->curDeclIsSkinned && self->curNormalizedSkinnedDecl != NULL);
+                    if (swapShaderDecl)
+                        ((FN_SetDecl)vt2[SLOT_SetVertexDeclaration])(self->pReal, self->curNormalizedSkinnedDecl);
+                    hr = ((FN)vt2[SLOT_DrawIndexedPrimitive])(self->pReal, pt, bvi, mi, nv, si, pc);
+                    if (swapShaderDecl)
+                        ((FN_SetDecl)vt2[SLOT_SetVertexDeclaration])(self->pReal, self->lastDecl);
                     if (self->curDeclPosType == D3DDECLTYPE_FLOAT3)
                         shaderRouteFloat3 = 1;
                 } else {
-                    /* Legacy null-VS fallback for FLOAT3 when vertex capture is off (or forced). */
+                    /* Legacy null-VS fallback for FLOAT3 when vertex capture is off (or forced).
+                     * For skinned draws, swap to a normalized decl (no BLENDWEIGHT/BLENDINDICES)
+                     * around the FFP-facing call so Remix's geometrydescriptor hash is stable
+                     * across LOD swaps and weight-type variance. */
                     typedef int (__stdcall *FN_SetVS)(void*, void*);
                     typedef int (__stdcall *FN_SetDecl)(void*, void*);
                     void **vt = RealVtbl(self);
-                    /* For skinned draws, swap to a normalized decl (no BLENDWEIGHT/BLENDINDICES)
-                     * around the FFP-facing call so Remix's geometrydescriptor hash is stable
-                     * across LOD swaps and weight-type variance. Game shader uses original decl. */
                     int swapNormDecl = (self->curDeclIsSkinned && self->curNormalizedSkinnedDecl != NULL);
-                    if (swapNormDecl)
-                        ((FN_SetDecl)vt[SLOT_SetVertexDeclaration])(self->pReal, self->curNormalizedSkinnedDecl);
                     ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, NULL);
                     TRL_ApplyFFPDrawState(self, 1);
+                    if (swapNormDecl)
+                        ((FN_SetDecl)vt[SLOT_SetVertexDeclaration])(self->pReal, self->curNormalizedSkinnedDecl);
                     hr = ((FN)vt[SLOT_DrawIndexedPrimitive])(self->pReal, pt, bvi, mi, nv, si, pc);
-                    if (self->lastVS)
-                        ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, self->lastVS);
                     if (swapNormDecl)
                         ((FN_SetDecl)vt[SLOT_SetVertexDeclaration])(self->pReal, self->lastDecl);
+                    if (self->lastVS)
+                        ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, self->lastVS);
                 }
                 if (self->curDeclPosType == D3DDECLTYPE_SHORT4)
                     self->drawsS4++;
@@ -4296,10 +4307,10 @@ static void *GetStrippedDecl(WrappedDevice *self, void *pOrigDecl,
 
 /* Build a normalized clone of a skinned vertex declaration: same element offsets and
  * types as the original, but with BLENDWEIGHT and BLENDINDICES removed. The clone is
- * what the proxy hands to Remix on the FFP-facing null-VS draw call so that Remix's
- * `geometrydescriptor` hash component does not vary with bone-count / weight-type
- * changes across LODs. The game's own shader pipeline continues to use the original
- * decl (swap is wrapped tightly around the FFP draw, then restored). */
+ * what the proxy hands to Remix on BOTH the FFP-facing null-VS draw call AND the
+ * shader-route draw call so that Remix's `geometrydescriptor` hash component does not
+ * vary with bone-count / weight-type changes across LODs. The original decl is restored
+ * immediately after the draw so the game's own subsequent state-tracking sees no change. */
 static void *BuildSkinnedNormalizedDecl(WrappedDevice *self, void *pOrigDecl,
     unsigned char *elemBuf, unsigned int numElems)
 {
@@ -4365,7 +4376,6 @@ static int __stdcall WD_SetVertexDeclaration(WrappedDevice *self, void *pDecl) {
 
     self->lastDecl = pDecl;
     self->curDeclIsSkinned = 0;
-    self->curNormalizedSkinnedDecl = NULL;
     self->curDeclHasTexcoord = 0;
     self->curDeclHasNormal = 0;
     self->curDeclHasColor = 0;
@@ -4376,6 +4386,7 @@ static int __stdcall WD_SetVertexDeclaration(WrappedDevice *self, void *pDecl) {
     self->curDeclUsesAuxStreams = 0;
     self->curDeclTexcoordType = -1;
     self->curDeclTexcoordOff = 0;
+    self->curNormalizedSkinnedDecl = NULL;
 #if ENABLE_SKINNING
     self->curDeclNumWeights = 0;
 #if EXPAND_SKIN_VERTICES
@@ -4473,6 +4484,7 @@ static int __stdcall WD_SetVertexDeclaration(WrappedDevice *self, void *pDecl) {
                         default:                  self->curDeclNumWeights = 3; break;
                     }
 #endif
+
                     if (self->normalizeSkinnedDecl) {
                         int firstTimeForDecl = 1;
                         int sd;

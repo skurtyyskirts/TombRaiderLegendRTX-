@@ -39,29 +39,38 @@ Note: View and Projection are SEPARATE registers, not a fused ViewProj.
 - Engine root: `0x01392E18` (`g_pEngineRoot`)
 - Renderer chain: `g_pEngineRoot (+0x214) → TRLRenderer* (+0x0C) → IDirect3DDevice9*`
 
-## rtx.conf (Actual)
+## rtx.conf (Actual — updated 2026-05-18)
 ```ini
-rtx.zUp = True
-rtx.useVertexCapture = True
 rtx.fusedWorldViewMode = 0
+rtx.useWorldMatricesForShaders = True
+rtx.useVertexCapture = True
+rtx.zUp = True
 rtx.sceneScale = 0.0001
 rtx.enableRaytracing = True
-rtx.fallbackLightMode = 1
-rtx.fallbackLightRadiance = 5, 5, 5
-rtx.fallbackLightDirection = -70.5, 1.5, -326.9
-rtx.geometryAssetHashRuleString = "indices,texcoords,geometrydescriptor"
+rtx.enableReplacementAssets = True
+rtx.geometryAssetHashRuleString = positions,indices,texcoords,geometrydescriptor
+rtx.geometryGenerationHashRuleString = positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader
+rtx.calculateAxisAlignedBoundingBox = True
+rtx.hashCollisionDetection = True
+rtx.antiCulling.object.enable = False
+rtx.antiCulling.light.enable = False
+rtx.fallbackLightMode = 0
 rtx.terrainBaker.enableBaking = False
 rtx.terrain.terrainAsDecalsEnabledIfNoBaker = True
 rtx.terrain.terrainAsDecalsAllowOverModulate = False
-rtx.remixMenuKeyBinds = X
 rtx.skyBoxTextures = 0x443B45FB9971FC90, 0x78AD1D0EDA0FFC21, 0x8405ADDE0AE29A5F
+rtx.skyAutoDetect = False
 rtx.uiTextures = 0x03016D2FBBF5C65D, 0x2164293A60D148AC
+rtx.enableNearPlaneOverride = True
+rtx.nearPlaneOverride = 0.1
+rtx.remixMenuKeyBinds = X
 ```
 ### Hash Rule Rationale
-- Asset hash: `indices,texcoords,geometrydescriptor` — excludes clip-space positions for stable material/replacement assignments
-- Generation hash: must include positions (Remix hard-crashes with "Position hash should never be empty" otherwise)
-- Generation hash includes positions and flickers with camera movement
-- **Asset hash stability confirmed (build 075)** — purple test light anchored to `mesh_574EDF0EAD7FC51D` was stable and visible; Toolkit replacement pipeline works end-to-end. Stage lights absent only because those 8 mesh hashes are stale and need a fresh capture.
+- Asset hash: `positions,indices,texcoords,geometrydescriptor` — positions required (build 047: removing positions causes catastrophic hash collision)
+- Generation hash: `positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader` — positions required (Remix crashes without them)
+- Anti-culling disabled — causes freeze with TRL's spatial tree traversal
+- Fallback light disabled — prevents false positives (fallback light masqueraded as stage light in builds 019-037)
+- **Asset hash stability confirmed (build 075)** — purple test light anchored to `mesh_574EDF0EAD7FC51D` was stable and visible; Toolkit replacement pipeline works end-to-end. Stage lights absent only because those 2 mesh hashes in mod.usda are stale and need a fresh capture.
 
 ## Current Status
 
