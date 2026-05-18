@@ -242,7 +242,7 @@ PASS builds include `miracle` in the folder name. Every build â€” pass or fail â
 
 ## Documentation
 
-The full project knowledge base lives in the [**wiki/**](wiki/) directory and is also published at the [GitHub Wiki](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/wiki).
+The full project knowledge base lives in the [**wiki/**](wiki/) directory. To also publish it to the [GitHub Wiki](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/wiki), enable wikis on the repo and run `scripts/sync_wiki.sh`.
 
 | Document | Description |
 |----------|-------------|
