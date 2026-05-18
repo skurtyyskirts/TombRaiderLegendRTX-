@@ -33,7 +33,7 @@ on:
         default: .github/prompts/idea-generation.md
     secrets:
       ANTHROPIC_API_KEY:
-        required: true
+        required: false
       LINEAR_API_KEY:
         required: false
 
@@ -44,11 +44,23 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - name: Check API key
+        id: keycheck
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::ANTHROPIC_API_KEY not set; skipping idea generation."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.keycheck.outputs.skip != 'true'
       - uses: actions/setup-python@v5
+        if: steps.keycheck.outputs.skip != 'true'
         with:
           python-version: '3.11'
       - name: Build context, call Claude, push ideas
+        if: steps.keycheck.outputs.skip != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
@@ -155,6 +167,7 @@ jobs:
               print('Linear not configured or config missing, skipping Linear push')
           PYEOF
       - name: Open ideas PR
+        if: steps.keycheck.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WHITEBOARD_FILE: ${{ inputs.whiteboard_file }}
