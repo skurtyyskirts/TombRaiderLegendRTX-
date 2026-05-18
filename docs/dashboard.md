@@ -1,6 +1,6 @@
 # skurtyyskirts ecosystem status
 
-_Generated 2026-05-17 13:49 UTC_
+_Generated 2026-05-18 15:50 UTC_
 
 | Repo | Last commit | Open PRs | Open issues | Latest release |
 |---|---|---|---|---|
@@ -8,8 +8,8 @@ _Generated 2026-05-17 13:49 UTC_
 | [HeavyRainRTX](https://github.com/skurtyyskirts/HeavyRainRTX) | {"message" | ? | ? | none |
 | [TombRaiderUnderworldRTX](https://github.com/skurtyyskirts/TombRaiderUnderworldRTX) | {"message" | ? | ? | none |
 | [StrangleholdRTX](https://github.com/skurtyyskirts/StrangleholdRTX) | {"message" | ? | ? | none |
-| [TombRaiderLegendRTX-](https://github.com/skurtyyskirts/TombRaiderLegendRTX-) | 2026-05-16 | 30 | 30 | v0.1.0 |
-| [Substance2Remix](https://github.com/skurtyyskirts/Substance2Remix) | 2026-05-15 | 30 | 0 | v0.5.0 |
+| [TombRaiderLegendRTX-](https://github.com/skurtyyskirts/TombRaiderLegendRTX-) | 2026-05-18 | 5 | 30 | v0.1.0 |
+| [Substance2Remix](https://github.com/skurtyyskirts/Substance2Remix) | 2026-05-18 | 30 | 0 | v0.5.0 |
 | [Substance2Duplicate](https://github.com/skurtyyskirts/Substance2Duplicate) | {"message" | ? | ? | none |
 | [LANoireRTX](https://github.com/skurtyyskirts/LANoireRTX) | {"message" | ? | ? | none |
 | [FEARRTX](https://github.com/skurtyyskirts/FEARRTX) | {"message" | ? | ? | none |
@@ -30,18 +30,18 @@ _Generated 2026-05-17 13:49 UTC_
 {"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#list-commits","status":"404"}- (no access)
 
 ### TombRaiderLegendRTX-
+- [cd57241](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/cd5724103953cd5f17aedb03724ce3ce525cf641) fix: sync root proxy source with build 080 patches copy + update CLAUDE.md rtx.conf section (#341)
+- [e871c01](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/e871c01eaf67b881dec2e8bb857ebe600de59401) chore: add agent backups, proxy d3d9.dll, build080 backup snapshot
+- [2d0a934](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/2d0a934f5dc52a9c5d7b2ce5b62af93d786035f3) chore(deps): bump the python group with 2 updates (#340)
+- [2516373](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/2516373932006c84ffa1be255641191f46dbba0e) dashboard: update 2026-05-17
 - [e6cacdb](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/e6cacdbef5057899da37aefe3df8b1ddbe70eb4c) dashboard: update 2026-05-16
-- [be86a62](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/be86a6295083cb4a2005b37b6af0405b700225e3) dashboard: update 2026-05-15
-- [598d0cd](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/598d0cd5e5676273592fd816c0a24136d7a1d9fe) fix: model claude-opus-4-6, add output dirs for workflow artifacts
-- [eaed052](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/eaed0528cb2d79918100577eae457722ad13221d) chore(deps): bump the python group with 4 updates (#258)
-- [3cdbc59](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/commit/3cdbc59f296ea25ad615a97e807243769c2f209d) ci: fix release-drafter to only run on push to default branch (#257)
 
 ### Substance2Remix
+- [46ca0da](https://github.com/skurtyyskirts/Substance2Remix/commit/46ca0da32e830a193e6eb91fc1e92ffa65d50d01) chore: add dependabot config for github-actions
 - [9afb083](https://github.com/skurtyyskirts/Substance2Remix/commit/9afb083fe629dec0c3e046cb80a36aec0c142961) Add Dependabot config for github-actions updates (#106)
 - [dc8b694](https://github.com/skurtyyskirts/Substance2Remix/commit/dc8b694bd9fe3138a12326cc0136725828d4ad5b) fix: normalize model name (claude-sonnet-4-20250514->claude-sonnet-4-5) and remove duplicate CHANGELOG.md path trigger
 - [9877d65](https://github.com/skurtyyskirts/Substance2Remix/commit/9877d6518a4d994fae3682d6e1ed430b837d70ac) Add painter-api-compat-monitor Claude Code agent
 - [1078a5f](https://github.com/skurtyyskirts/Substance2Remix/commit/1078a5f45e88b4a42a282938cad8e3e113a9058e) chore: health check fix 05-13
-- [9261c96](https://github.com/skurtyyskirts/Substance2Remix/commit/9261c9682cd108288201acabb32e0d710bddce8e) 🧪 [testing improvement async_utils error path] (#74)
 
 ### Substance2Duplicate
 {"message":"Not Found","documentation_url":"https://docs.github.com/rest","status":"404"}- (no access)
