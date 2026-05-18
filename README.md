@@ -115,7 +115,7 @@ Everything works. The geometry submits (2,400–3,700 draw calls/scene). The rep
 
 > **Note:** `user.conf` in the game directory overrides `rtx.conf`. The Remix developer menu regenerates this file and resets `rtx.enableReplacementAssets` to `False`. Always verify it is `True` before testing mod content.
 
-Full status and decision tree: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
+Full status and decision tree: [Current Status](wiki/Current-Status.md) (wiki) · [Build History](wiki/Build-History-Index.md)
 
 ---
 
@@ -164,7 +164,7 @@ c48+        Skinning bone matrices (3 registers / bone)
 | Mesh eviction (3 sites) | NOP | `SectorEviction` × 2 + `ObjectTracker_Evict` |
 | `0x40C430` | JMP → `0x40C390` | Redirects BVH frustum culler to no-cull path (Layer 31, build 072) |
 
-Full 36-layer culling map: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
+Full 36-layer culling map: [36-Layer Culling Map](wiki/36-Layer-Culling-Map.md) (wiki)
 
 ---
 
@@ -214,7 +214,7 @@ Always use a fresh temp directory outside the repo and outside `.git`.
 | [`graphics/directx/dx9/tracer/`](graphics/directx/dx9/tracer/) | Full-frame D3D9 API capture — all 119 methods, with offline analysis |
 | [`autopatch/`](autopatch/) | Autonomous hypothesis-test-patch loop |
 | [`automation/`](automation/) | Screenshot automation and test replay infrastructure |
-| [`docs/`](docs/) | Full documentation — research, reference, guides, live status |
+| [`wiki/`](wiki/) | **Full project wiki** — consolidated knowledge base, research, reference, guides, build history, dead ends |
 | [`TRL tests/`](TRL%20tests/) | Test build archive — every build with `SUMMARY.md`, screenshots, proxy log, source |
 | [`TRL traces/`](TRL%20traces/) | Full-frame D3D9 API captures for offline analysis |
 
@@ -242,20 +242,28 @@ PASS builds include `miracle` in the folder name. Every build — pass or fail �
 
 ## Documentation
 
+The full project knowledge base lives in the [**wiki/**](wiki/) directory and is also published at the [GitHub Wiki](https://github.com/skurtyyskirts/TombRaiderLegendRTX-/wiki).
+
 | Document | Description |
 |----------|-------------|
-| [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md) | **Live status** — 36-layer culling map, full build history narrative, decision tree, key addresses |
-| [`docs/status/TEST_STATUS.md`](docs/status/TEST_STATUS.md) | Build-by-build pass/fail table, what's done, what remains |
-| [`docs/`](docs/) | Full documentation index — reference, guides, research |
-| [`CHANGELOG.md`](CHANGELOG.md) | Cross-session development log — findings, patches, dead ends, next steps |
+| [Home](wiki/Home.md) | Wiki entry point — sections, key addresses, quick start |
+| [Current Status](wiki/Current-Status.md) | **Live status** — open blocker, recent builds, key addresses |
+| [Build History Index](wiki/Build-History-Index.md) | Every build with one-line summary |
+| [36-Layer Culling Map](wiki/36-Layer-Culling-Map.md) | The canonical culling layer inventory |
+| [Dead Ends](wiki/Dead-Ends.md) | Every approach that was tried and failed |
+| [DLL Chain and Architecture](wiki/DLL-Chain-and-Architecture.md) | What each link does and why |
+| [FFP Proxy Pipeline](wiki/FFP-Proxy-Pipeline.md) | 16-section technical deep dive |
+| [Reverse Engineering Toolkit](wiki/Reverse-Engineering-Toolkit.md) | Static + dynamic + tracer workflow |
+| [Setup Guide](wiki/Setup-Guide.md) | Environment setup, build, deploy, launch |
+| [`CHANGELOG.md`](CHANGELOG.md) | Cross-session development log |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Setup, conventions, and code review checklist |
 
 ---
 
 ## Developer Workflow
 
-1. Read [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md) — current culling map, build history, decision tree
-2. Read [`docs/status/TEST_STATUS.md`](docs/status/TEST_STATUS.md) — build-by-build results and open items
+1. Read [Current Status](wiki/Current-Status.md) — current culling map, build history, decision tree
+2. Read [Dead Ends](wiki/Dead-Ends.md) before proposing experiments
 3. Check the latest build folder in [`TRL tests/`](TRL%20tests/) and its `SUMMARY.md`
 4. Read `patches/TombRaiderLegend/kb.h` — accumulated address map and struct layouts
 5. Run `python patches/TombRaiderLegend/run.py test --build --randomize` for the authoritative stage-light release gate, or `python patches/TombRaiderLegend/run.py test-hash --build` for hash-only screening
