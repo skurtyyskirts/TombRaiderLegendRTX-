@@ -6,6 +6,76 @@ Full build history: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
 
 ---
 
+## [2026-05-19 10:38] BUILD 085 MIRACLE — bind-pose VB cache stabilizes main-menu Lara hashes
+
+End-to-end verification of the build 081 bind-pose VB cache against the main
+menu Lara model. Four iterations from the same dd5cb61 base; iter4 produced
+two consecutive hash-debug screenshots with byte-identical hash
+colorization on every part of Lara's body and `LaraVB cache hits=10000`
+telemetry in `ffp_proxy.log`.
+
+### What landed
+
+1. **Gate widened** (build 083): `TRL_ForceSkinnedNullVS` now matches
+   `posType==FLOAT3 && curDeclHasColor` instead of `posType==FLOAT3 &&
+   tcType==FLOAT4`. Menu Lara uses Decl A (`FLOAT3 + COLOR + TEXCOORD0
+   FLOAT2`) and the original `FLOAT4` requirement excluded her entirely.
+2. **Lookup key relaxed** (build 084): `Lara_LookupCacheSlot` now keys on
+   `(nv, pc, tex0)` only. `bvi` and `mi` are recorded on capture for
+   diagnostics but no longer participate in matching, so TRL's CPU-skinner
+   streaming-offset variance stops generating fresh cache slots.
+3. **`nv` upper bound raised** (build 085): `useLaraCache` now accepts
+   `nv <= 65535` (D3D9 16-bit index limit). The 21845-vertex menu Lara
+   super-mesh used to be silently rejected by the prior 16384 cap, so the
+   cache never even entered. Worst-case memory: 64 × 65535 × stride24 ≈
+   100 MB. Real cost at the menu: 2 slots × 21845 × 24 ≈ 1 MB.
+4. **`patches/.../proxy/*` synced with root `proxy/*`** — the build 081
+   commit only wrote into the root copy, but `run.py` builds from the
+   patches dir. Without this sync, none of the cache code was reaching
+   the deployed DLL.
+5. **`--main-menu` mode** added to `patches/TombRaiderLegend/run.py`
+   `test-hash` subcommand. Skips Peru navigation, settles 120 s, sends
+   UP/DOWN/UP on the menu selector, captures two screenshots three
+   seconds apart.
+
+### PASS criterion observation
+
+```
+LaraVB cache: first bind-pose snapshot committed
+LaraVB cache hits=100     misses=2  entries=2
+LaraVB cache hits=1000    misses=2  entries=2
+LaraVB cache hits=10000   misses=2  entries=2
+```
+
+Two unique submesh signatures captured at the menu, both hit by every
+subsequent draw of the same signature. Through the Remix view Lara
+appears frozen in the bind-pose; the game raster path keeps animating
+her independently — exactly the design intent stated in commit dd5cb61.
+
+### Per-iteration progression
+
+- **build 082 (iter1, as-shipped 081)** — FAIL. Gate `FLOAT4 texcoord`
+  never matched menu Lara's `FLOAT2` decl. Zero cache activity.
+- **build 083 (iter2, widen gate)** — FAIL. Gate fires, but
+  `nv=21845 > 16384` skipped the cache entry. Hashes still drifted.
+- **build 084 (iter3, drop bvi/mi)** — FAIL (no-op). nv-cap kept the
+  lookup path unreached, change had no observable effect.
+- **build 085 (iter4, raise nv cap)** — PASS.
+
+### Open follow-ups
+
+1. Confirm no in-level (Croft Manor / Peru) regression now that the
+   gate is broader. The variants were tuned around the menu scene only.
+2. Recapture stage-light anchor hashes against the new stable IDs and
+   update `mod.usda` (the original 8 stale hashes from the build 075
+   investigation now have a chance of being replaced with values from
+   a fresh Toolkit capture taken on top of this build).
+3. Consider lowering `vbFingerprintCount` cap (40) once the menu-decl
+   diagnostic is no longer needed every run, so the log scrolls past
+   first-occ output and shows hit telemetry sooner.
+
+---
+
 ## [2026-05-18 22:50] SESSION — Lara/movable hash drift root-caused, bind-pose VB cache+replay shipped (UNTESTED)
 
 ### Objective
