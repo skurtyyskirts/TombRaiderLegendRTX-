@@ -99,18 +99,26 @@ rtx.remixMenuKeyBinds = X
 
 **PASS criteria:** Both red and green stage lights visible in all 3 clean render screenshots, lights shift as Lara strafes, hashes stable, no crash.
 
-#### Secondary Open Issue: Lara / Skinned Character Hash Drift (build 079, IN PROGRESS)
+#### Secondary Open Issue: Lara / Movable Hash Drift — CPU-Skinning Confirmed, Bind-Pose VB Cache Shipped (build 081, UNTESTED)
 
-World geometry asset hashes are stable. Lara Croft (and distant NPCs) show drifting hash-debug colors between frames while world stays constant. Build 079 attempted decl normalization (strip `BLENDWEIGHT`/`BLENDINDICES` from the Remix-facing decl), but the fix only fires on the null-VS path — and `ffp_proxy.log` confirms `Float3Route effective: shader` for Lara because `rtx.useVertexCapture = True`. Fix is built and deployed but does not engage.
+World geometry asset hashes are stable since build 075. Lara, the practice dummy, and the soccer ball still show drifting hash-debug colors. Root cause and fix landed this session (2026-05-18); end-to-end verification still pending.
 
-**Open questions before next attempt:**
-1. Is the user looking at the *asset* hash debug view or the *generation* hash view? (Generation hash is expected to flicker on skinned meshes by design — see build-073 TECHNICAL_ANALYSIS.md.)
-2. Is Lara FLOAT3 or SHORT4 skinned? The build 079 log will tell us once retested with the deployed DLL (always-on `SKINNED decl=` log entries fire even on the shader route).
-3. If true asset-hash drift, branch the fix:
-   - SHORT4 skinned → extend `S4_ExpandAndDraw` with the same decl swap (already null-VS, so swap is safe).
-   - FLOAT3 skinned → new INI toggle `[FFP] SkinnedFloat3Route=null_vs` to override `useVertexCapture` for skinned-only. Tradeoff: Lara through Remix renders bind-pose.
+**Root cause** (established 2026-05-18 via always-on decl dumper + per-draw VB content fingerprint):
 
-See [TRL tests/build-079-normalize-skinned-decl-FAIL-shader-route-mismatch/SUMMARY.md](TRL%20tests/build-079-normalize-skinned-decl-FAIL-shader-route-mismatch/SUMMARY.md).
+- TRL's gameplay character/movable vertex decl (Decl C, `0x01944950`) is `POSITION FLOAT3 + COLOR D3DCOLOR + TEXCOORD0 FLOAT4`. **No BLENDWEIGHT, no BLENDINDICES.** Only 3 unique decls exist across a whole gameplay session (front-end FLOAT3, world SHORT4, and this Lara-class FLOAT3+FLOAT4tex). The `curDeclIsSkinned` gate everything was built around never fires.
+- Per-draw VB content fingerprint (FNV-1a over first 32 bytes at the draw's start vertex) shows all Lara-class draws share one streaming VB at `0x017A3CD8`. The first 13 draws form 7 identical pairs (shadow+color pass). Draws 14+ all start at the same first-vertex position but every draw has a different checksum — the game **rewrites the VB's non-position bytes between draws**. CPU-skinning into a shared streaming buffer is the actual model.
+- Consequence: routing decisions in the proxy cannot stabilize the hash. Remix snapshots whatever is in the VB at DIP time, and the bytes are different every draw regardless of whether we take the shader route or the null-VS route.
+
+**Fix shipped** (`patches/TombRaiderLegend/backups/2026-05-18_skinned-float3-route-null-vs/`):
+
+1. **`SkinnedFloat3Route=null_vs`** — new INI toggle, gate broadened to runtime signature `curDeclPosType==FLOAT3 && curDeclTexcoordType==FLOAT4` (matches Lara-class only; menu and world geometry untouched). Forces those draws onto the null-VS FFP path.
+2. **`LaraClassBindPoseCache=1`** — bind-pose VB cache+replay. Per-draw signature `(nv, pc, tex0, bvi, mi)` keys a 64-entry cache of private snapshot VBs. First sight of a signature locks the live VB and copies into a managed snapshot. Subsequent draws of the same signature bind the snapshot to Remix instead of the live VB (DIP with `bvi=-(int)mi` so cached vertex 0 lines up). The game's raster path is unaffected — game still animates Lara via its own pipeline; only the geometry forwarded into `d3d9_remix.dll` is redirected.
+
+**Tradeoff**: through the Remix view alone, Lara/dummy/ball will appear frozen in the pose they were in when each submesh was first captured. The win is that the asset hash becomes stable, which unlocks the Toolkit replacement-asset workflow — proper skinned replacement meshes can then re-introduce animation through Remix's own pipeline.
+
+**Verification pending**: relaunch and confirm hash-debug view 277 colors hold across the 3-position camera pan. Telemetry `LaraVB cache hits=100` should appear within seconds of gameplay if the cache is engaging.
+
+See [TRL tests/build-079-normalize-skinned-decl-FAIL-shader-route-mismatch/SUMMARY.md](TRL%20tests/build-079-normalize-skinned-decl-FAIL-shader-route-mismatch/SUMMARY.md) for the prior failed attempt; the 2026-05-18 CHANGELOG entry has full diagnostic details.
 
 ## 36-Layer Culling Map
 
@@ -172,6 +180,8 @@ See [TRL tests/build-079-normalize-skinned-decl-FAIL-shader-route-mismatch/SUMMA
 | 13 | RenderQueue_FrustumCull bypass (0x40C430 → 0x40C390) | +29% draws, no crash — but lights still absent; anchor hash mismatch likely cause | 072 |
 | 14 | `user.conf` overriding `rtx.enableReplacementAssets=True` | `user.conf` had `enableReplacementAssets=False` generated by in-game Remix menu; silently disabled all mod content builds 016–074 — fixed build 075 | 075 |
 | 15 | CPU smooth normals in proxy (stream 1 FLOAT3 injection) | Built and compiled but didn't work at runtime — changes all geometry descriptor hashes, possible IB lock/stream 1/Remix capture conflicts | 075+ |
+| 16 | `curDeclIsSkinned` gate (BLENDWEIGHT + BLENDINDICES detection) for Lara fix | TRL never exposes formal blend usages in its vertex decls — across an entire gameplay session only 3 unique decls were observed (front-end FLOAT3, world SHORT4, Lara-class FLOAT3+FLOAT4tex), none with BW/BI. Any skinning hook keyed on this gate never fires. Use the FLOAT3-position + FLOAT4-texcoord signature instead. | 080 |
+| 17 | Routing alone to stabilize Lara hash (null-VS forced via `SkinnedFloat3Route=null_vs`) | Override engaged (`MOVABLE forced null_vs: first occurrence` confirmed) but hash still drifted. Per-draw VB content fingerprint proves the live VB bytes change between draws — TRL streams CPU-skinned data into one shared VB. No routing fix can stabilize the bytes the proxy forwards to Remix; cache+replay is required. | 080 |
 
 ## What Has NOT Been Tried
 

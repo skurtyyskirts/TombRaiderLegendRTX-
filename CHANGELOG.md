@@ -6,6 +6,132 @@ Full build history: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
 
 ---
 
+## [2026-05-18 22:50] SESSION — Lara/movable hash drift root-caused, bind-pose VB cache+replay shipped (UNTESTED)
+
+### Objective
+Stabilize the asset hash for Lara, the practice dummy, and the soccer ball so
+their meshes can carry light anchors and replacement assets. Build 080's
+intermediate states verified along the way, then pivoted to a model-2 fix once
+ground truth was known.
+
+### Diagnostic Cycles This Session
+Three iterative proxy builds with increasing instrumentation, each test cycle
+isolating one variable so failure was bisectable.
+
+#### Cycle 1 — `SkinnedFloat3Route=null_vs` (gate: `curDeclIsSkinned`)
+- Added an INI toggle that forces *skinned* FLOAT3 draws onto the null-VS path
+  even when `rtx.useVertexCapture=True` would otherwise force the shader route.
+- Gate condition: `curDeclIsSkinned` (BLENDWEIGHT + BLENDINDICES present in
+  the vertex decl).
+- **Deploy bug repeated**: the canonical game directory at
+  `AlmightyBackups/NightRaven1/Vibe-Reverse-Engineering-Claude/Tomb Raider Legend\`
+  had a stale May-11 `d3d9.dll`. First "FAIL" was the user testing the wrong
+  binary — same class of issue as build 075's `user.conf` regression, and
+  `user.conf` had silently flipped `rtx.enableReplacementAssets=False` again
+  via the in-game Remix menu. Both reset before re-test.
+- After clean deploy: zero `SKINNED decl=` log entries across the entire
+  session. The override gate never fired because no draw was classified as
+  skinned.
+
+#### Cycle 2 — Always-on per-decl dumper
+- Added a DIAG-independent first-encounter dumper (cap 16) so we could see
+  every unique vertex declaration regardless of skinning classification or
+  the 50-second diagnostic delay.
+- **Three unique decls observed** during gameplay:
+  - **Decl A** (`0x01944D40`) — front-end / menu backdrop: `POSITION FLOAT3 +
+    COLOR D3DCOLOR + TEXCOORD0 FLOAT2`.
+  - **Decl B** (`0x019450C0`) — world geometry, 579 of 599 draws/scene:
+    `POSITION SHORT4 + COLOR + TEXCOORD0 SHORT2 + TEXCOORD1 SHORT2`. Already
+    routed through `S4_ExpandAndDraw`; hashes stable since build 075.
+  - **Decl C** (`0x01944950`) — gameplay characters/movables (Lara, dummy,
+    soccer ball, NPCs): `POSITION FLOAT3 + COLOR D3DCOLOR + TEXCOORD0
+    **FLOAT4**`. ~20 draws/scene. **No BLENDWEIGHT, no BLENDINDICES, no
+    NORMAL.** That ruled out the assumption baked into all prior skinning
+    work — TRL does not surface formal blend usages anywhere in its character
+    vertex format.
+
+#### Cycle 2.5 — Broadened gate
+- Re-targeted `TRL_ForceSkinnedNullVS` from `curDeclIsSkinned` to a runtime
+  signature gate: `curDeclPosType == FLOAT3 && curDeclTexcoordType == FLOAT4`.
+  That matches Decl C exclusively (front-end is FLOAT2 texcoord, world
+  geometry is SHORT4 position) so the override scope is character/movable
+  only.
+- `MOVABLE forced null_vs: first occurrence` log line confirmed the override
+  finally engaged for at least one Lara-class draw.
+- **Hash still drifted in debug view.** Override active and ineffective.
+
+#### Cycle 3 — Per-draw VB content fingerprint
+- Added a fingerprint logger inside the override path (cap 40 dumps): for each
+  Lara-class draw, lock the source VB at the start vertex, log VB pointer +
+  vertex count + stride + FNV-1a checksum of the first 32 bytes + first
+  vertex XYZ.
+- **Result (smoking gun)**:
+  - Every draw uses the same VB pointer `0x017A3CD8`. Single shared buffer.
+  - Draws 0–13 form 7 pairs (drawIdx 0+1, 2+3, …, 12+13): each pair identical
+    csum and position, distinct between pairs — likely 7 submeshes drawn
+    twice each (shadow/depth + color pass).
+  - Draws 14–39 all have the **same first-vertex position** `(289.206,
+    151.305, 337.065)` but **every draw has a different csum**. The
+    non-position bytes (D3DCOLOR + 16-byte FLOAT4 TEXCOORD) change between
+    consecutive draws.
+- **Conclusion**: TRL streams CPU-skinned vertex data into one shared VB,
+  rewriting the relevant region between draws. Remix snapshots whatever is
+  in the VB at DIP time, and the content is different every draw. **No
+  routing decision in the proxy can stabilize the hash with the live VB** —
+  the bytes themselves differ.
+
+### Fix Shipped (Untested) — Lara-class Bind-Pose VB Cache+Replay
+- Per-draw signature `(nv, pc, tex0, bvi, mi)` keys a private cache (capacity
+  64) of bind-pose vertex buffers owned by the proxy.
+  - First sight of a signature → snapshot: allocate a managed VB,
+    `D3DLOCK_READONLY` the live VB at the draw's start offset for `nv*stride`
+    bytes, copy into the snapshot VB.
+  - Subsequent draws matching the signature → replay: `SetStreamSource` to
+    the snapshot, DIP with `bvi = -(int)mi` so the cached VB's vertex 0 is
+    indexed correctly, then restore stream to the live VB.
+- INI toggle `[FFP] LaraClassBindPoseCache=1` (default on when
+  `SkinnedFloat3Route=null_vs`). Cleanup wired into `WD_Release`.
+- Telemetry: `LaraVB cache hits=N misses=M entries=K` log lines at 100,
+  1000, 10000 hits.
+- **Visual tradeoff is now explicit**: through the Remix view, Lara/dummy/
+  ball appear frozen in whatever pose was current when each submesh was
+  first captured. The game's raster path is unaffected (game still animates
+  via its own pipeline; the cache only changes what Remix's d3d9 layer
+  receives). The stable hash unlocks the Toolkit replacement-asset workflow,
+  which is the actual end goal.
+
+### Files Modified
+- `proxy/d3d9_device.c`:
+  - New struct fields: `laraVBCache[64]`, `laraVBCacheCount`, `laraVBCacheHits`,
+    `laraVBCacheMisses`, `laraClassBindPoseCacheEnabled`,
+    `skinnedFloat3RoutingMode`, `vbFingerprintCount`, `allDeclsSeen[16]`,
+    `allDeclsLoggedCount`, `skinnedForcedNullVSLogged`.
+  - New helpers: `TRL_ForceSkinnedNullVS` (signature-gated), `Lara_LookupCacheSlot`,
+    `Lara_CaptureCacheSlot`, `Lara_ReleaseCache`.
+  - DIP path now branches snapshot/replay vs live VB inside the null-VS arm.
+- `proxy/proxy.ini`: added `[FFP] SkinnedFloat3Route` and `[FFP]
+  LaraClassBindPoseCache` toggles with explanatory comments.
+- Backup snapshot at
+  `patches/TombRaiderLegend/backups/2026-05-18_skinned-float3-route-null-vs/`.
+
+### Open Verification
+The cache implementation is shipped and deployed but NOT YET TESTED end-to-end.
+Pending in-game retest. Success criterion: hash-debug view 277 shows each
+unique Lara submesh holding a single color across all 3 camera-pan
+screenshots. Telemetry `LaraVB cache hits=100` should appear within seconds
+of gameplay if the cache is engaging.
+
+### Dead Ends Confirmed This Session
+- Routing skinned FLOAT3 draws to null-VS does *not* stabilize the hash on
+  its own — the VB content changes between draws, so the proxy and Remix
+  both see different bytes regardless of routing.
+- Gating any skinning-related logic on `curDeclIsSkinned` (BLENDWEIGHT +
+  BLENDINDICES) is wrong for TRL — those usages never appear in the game's
+  vertex decls (confirmed via always-on decl dumper, only 3 unique decls
+  observed across an entire gameplay session).
+
+---
+
 ## [2026-05-14 03:15] SESSION — Test-harness repair + build 080 source merge (untested)
 
 ### Objective
