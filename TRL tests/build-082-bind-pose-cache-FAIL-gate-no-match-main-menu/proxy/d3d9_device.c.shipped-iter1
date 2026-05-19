@@ -1196,14 +1196,8 @@ static void Lara_ReleaseCache(WrappedDevice *self)
  * because TRL's character decls carry no formal blend usages — confirmed by always-on
  * decl dumper, ffp_proxy.log build 081. */
 static int TRL_ForceSkinnedNullVS(WrappedDevice *self) {
-    /* Variant 7 (build-083): widen gate. Menu Lara uses FLOAT3 + COLOR + TEXCOORD0
-     * FLOAT2 (decl A), gameplay Lara uses FLOAT3 + COLOR + TEXCOORD0 FLOAT4 (decl C).
-     * Original gate (FLOAT4 only) misses menu Lara entirely, so cache never fires
-     * during main-menu hash test. Drop the texcoord-type check: cache any FLOAT3 pos
-     * draw that also has a COLOR component (menu UI without skinning is FLOAT3+TEXCOORD
-     * with no COLOR, so this still excludes it). */
     int isLaraClass = (self->curDeclPosType == D3DDECLTYPE_FLOAT3
-                       && self->curDeclHasColor);
+                       && self->curDeclTexcoordType == D3DDECLTYPE_FLOAT4);
     if (!isLaraClass)
         return 0;
     return (self->skinnedFloat3RoutingMode == FLOAT3_ROUTE_NULL_VS) ? 1 : 0;

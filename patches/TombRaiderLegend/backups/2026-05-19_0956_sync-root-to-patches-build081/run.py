@@ -442,107 +442,6 @@ def camera_pan_and_screenshot(hwnd, phase_name):
     return collect_screenshots(max_age_seconds=30, limit=3, after_ts=capture_started_at)
 
 
-def launch_game_to_main_menu():
-    """Launch TRL and stop at the main menu without navigating to Peru.
-
-    Used by main_menu_capture_lara_hashes for bind-pose VB cache verification:
-    Lara is rendered in the menu pose, no level streaming, no Peru cutscene.
-    """
-    try:
-        hwnd = stable_launcher.launch_game()
-        return require_live_game_window(hwnd, context="Main menu hash capture")
-    except SystemExit:
-        raise
-    except RuntimeError as exc:
-        print(f"ERROR: {exc}")
-        sys.exit(1)
-
-
-def main_menu_capture_lara_hashes(hwnd, phase_name):
-    """Capture two hash-debug screenshots at the main menu.
-
-    Flow: 120s settle (studio intros + menu) -> UP/DOWN/UP on selector
-    -> screenshot 1 -> wait 3s -> screenshot 2.
-    """
-    from livetools.gamectl import send_key, focus_hwnd
-
-    print(f"\n--- {phase_name}: Main menu capture ---")
-    hwnd = require_live_game_window(hwnd, context=f"{phase_name} settle")
-    focus_hwnd(hwnd)
-
-    print("  Settling 120s (studio intros + menu)...")
-    time.sleep(120)
-
-    hwnd = require_live_game_window(hwnd, context=f"{phase_name} pre-input")
-    focus_hwnd(hwnd)
-    time.sleep(0.5)
-
-    print("  Menu selector: UP")
-    send_key("UP", hold_ms=50)
-    time.sleep(0.5)
-    print("  Menu selector: DOWN")
-    send_key("DOWN", hold_ms=50)
-    time.sleep(0.5)
-    print("  Menu selector: UP")
-    send_key("UP", hold_ms=50)
-    time.sleep(1.0)
-
-    capture_started_at = time.time()
-    print("  Screenshot 1")
-    send_key("]", hold_ms=50)
-    time.sleep(3.0)
-    print("  Screenshot 2")
-    send_key("]", hold_ms=50)
-    time.sleep(2.0)
-
-    return collect_screenshots(max_age_seconds=30, limit=2,
-                               after_ts=capture_started_at)
-
-
-def do_main_menu_hash_capture(build_first=False):
-    """Hash stability test at the main menu (no Peru navigation).
-
-    Single launch, single phase (debug view 277). Verifies that the
-    bind-pose VB cache produces stable hashes on Lara at the menu pose.
-    """
-    if build_first:
-        build_proxy()
-
-    set_graphics_config()
-    disabled_nightly_mod = suspend_nightly_mod_override()
-
-    try:
-        print("\n=== Main menu hash debug capture (view 277) ===")
-        set_debug_view(277)
-        kill_game()
-        phase_started_at = time.time()
-        hwnd = launch_game_to_main_menu()
-        hash_shots = main_menu_capture_lara_hashes(hwnd,
-                                                   "Main menu - Hash Debug")
-
-        log_ready = wait_for_fresh_proxy_log(after_ts=phase_started_at)
-        if log_ready and PROXY_LOG.exists():
-            dest = SCRIPT_DIR / "ffp_proxy.log"
-            shutil.copy2(str(PROXY_LOG), str(dest))
-            print(f"Proxy log copied to {dest}")
-
-        from livetools.gamectl import find_hwnd_by_exe
-        crashed = not find_hwnd_by_exe("trl.exe")
-        if crashed:
-            print("WARNING: Game crashed during main menu capture!")
-        kill_game()
-
-        print(f"\n{'='*60}")
-        print(f"  MAIN MENU HASH CAPTURE COMPLETE")
-        print(f"  Crashed: {crashed}")
-        print(f"  Screenshots: {len(hash_shots)}")
-        print(f"{'='*60}")
-
-        return not crashed
-    finally:
-        restore_nightly_mod_override(disabled_nightly_mod)
-
-
 def do_test_hash_stability(build_first=False, quick=False):
     if build_first:
         build_proxy()
@@ -705,16 +604,10 @@ def main():
                              help="Build and deploy proxy before testing")
     test_hash_p.add_argument("--quick", action="store_true",
                              help="Skip dx9tracer phase (Phase 4)")
-    test_hash_p.add_argument("--main-menu", action="store_true",
-                             help="Capture at main menu instead of in-level "
-                                  "(for bind-pose VB cache verification)")
 
     args = parser.parse_args()
 
     if args.mode == "test-hash":
-        if getattr(args, 'main_menu', False):
-            raise SystemExit(0 if do_main_menu_hash_capture(
-                build_first=args.build) else 1)
         raise SystemExit(0 if do_test_hash_stability(
             build_first=args.build,
             quick=getattr(args, 'quick', False),
