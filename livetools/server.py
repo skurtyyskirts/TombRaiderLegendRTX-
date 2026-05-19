@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import secrets
 import socket
 import struct
 import sys
@@ -42,6 +43,7 @@ class Daemon:
         self._hit_event = threading.Event()
         self._lock = threading.Lock()
         self._running = True
+        self.auth_token = secrets.token_hex(16)
 
         self._trace_batches: dict[int, list] = {}
         self._trace_done: dict[int, bool] = {}
@@ -681,10 +683,14 @@ class Daemon:
         srv.listen(4)
         srv.settimeout(1.0)
 
-        STATE_FILE.write_text(json.dumps({
+        state_data = json.dumps({
             "pid": os.getpid(), "port": PORT,
             "target": self.target_name, "targetPid": self.pid,
-        }))
+            "token": self.auth_token,
+        })
+        fd = os.open(str(STATE_FILE), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(state_data)
 
         print(f"[livetools daemon] listening on {HOST}:{PORT}, "
               f"target={self.target_name} pid={self.pid}")
@@ -703,7 +709,19 @@ class Daemon:
 
     def _handle_conn(self, conn: socket.socket) -> None:
         try:
-            conn.settimeout(300)
+            conn.settimeout(5.0)
+            token_data = b""
+            while len(token_data) < 32:
+                chunk = conn.recv(32 - len(token_data))
+                if not chunk:
+                    break
+                token_data += chunk
+
+            if len(token_data) != 32 or not secrets.compare_digest(token_data.decode("ascii", errors="ignore"), self.auth_token):
+                self._send_raw(conn, json.dumps({"ok": False, "error": "Unauthorized"}).encode())
+                return
+
+            conn.settimeout(300.0)
             data = self._recv_raw(conn)
             cmd = json.loads(data)
             resp = self.handle(cmd)
