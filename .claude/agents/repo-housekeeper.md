@@ -21,20 +21,4 @@ You produce a punch-list of housekeeping tasks. You don't fix anything — you r
 ## Output
 Write `housekeeping-report-YYYY-MM-DD.md` and (if the scheduled workflow invoked you) open an issue labelled `housekeeping` with the same contents.
 
-```
-# Housekeeping Report — <date>
-
-## Stale branches (N)
-- branch_name  (last commit YYYY-MM-DD)
-
-## Dead Python files (N)
-- path/to/file.py
-
-## Large files (N)
-- path/to/file.bin  12M
-
-## Patch artifacts at root (N)
-- my_diff.patch
-```
-
 Do not delete files. The human reviews and acts.

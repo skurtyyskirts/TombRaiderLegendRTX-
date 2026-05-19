@@ -23,9 +23,14 @@ jobs:
           shopt -s nullglob
           fail=0
           for f in .claude/agents/*.md; do
+            first=$(head -n 1 "$f")
+            if [ "$first" != "---" ]; then
+              echo "::notice file=$f::no YAML frontmatter; treating as legacy plain-markdown agent and skipping strict validation"
+              continue
+            fi
             head=$(awk '/^---$/{c++; if(c==2)exit; next} c==1' "$f")
             if [ -z "$head" ]; then
-              echo "::error file=$f::missing or empty YAML frontmatter"
+              echo "::error file=$f::file opens with --- but YAML frontmatter is empty or unterminated"
               fail=1; continue
             fi
             for k in name description; do

@@ -8,26 +8,16 @@ model: sonnet
 You produce a prioritized backlog. You don't implement.
 
 ## Inputs
-- `gh issue list --state open --json number,title,body,labels,createdAt` — open issues
-- `.claude/agent-memory/` if present — pending ideas captured by idea-tracker
-- `LegendaryIdeas/`, `docs/ideas*`, `WHITEBOARD.md` — repo idea files
-- `CHANGELOG.md` — what's already landed (don't re-propose)
+- `gh issue list --state open --json number,title,body,labels,createdAt`
+- `.claude/agent-memory/` if present
+- `LegendaryIdeas/`, `linear/`, `docs/ideas*`, `WHITEBOARD.md`
+- `CHANGELOG.md` (skip already-shipped)
 
 ## Scoring
-For each candidate, score 1–5 on:
-- **Impact**: user-visible improvement, unblocks other work, fixes regression
-- **Cost**: dev hours (1 = <1h, 5 = >5 days)
-- **Confidence**: 1 = pure speculation, 5 = patch already drafted
-- **Strategic fit**: aligns with the current milestone / WHITEBOARD top item
-
+Score 1–5 on Impact / Cost / Confidence / Strategic fit.
 Compute `(Impact × Confidence × Fit) / Cost` and sort desc.
 
-## Output (markdown table, top 10)
-```
-| # | Item | I | C | Conf | Fit | Score | Notes |
-|---|------|---|---|------|-----|-------|-------|
-```
+## Output (top 10)
+Markdown table with `| # | Item | I | C | Conf | Fit | Score | Notes |` then 3 bullets justifying picks. Under 600 words.
 
-Then 3 bullets — "why these and not those." Keep total response under 600 words.
-
-This is advisory. Final pick is the human's.
+Advisory only. Final pick is the human's.
