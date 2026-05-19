@@ -1,0 +1,435 @@
+[wrapper] TRL_GAME_DIR = C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend
+[wrapper] argv = ['C:\\Users\\skurtyy\\Documents\\GitHub\\TombRaiderLegendRTX-\\patches\\TombRaiderLegend\\run.py', 'test-hash', '--main-menu']
+[11:07:52.814] info:  Game: trl.exe
+[11:07:52.814] info:  DXVK_Remix: remix-main+08e8f1b7
+[11:07:52.814] info:  System Information Report:
+[11:07:52.814] info:    CPU: (GenuineIntel) Intel(R) Core(TM) i9-14900K
+[11:07:52.814] info:    Memory: 23.94 GiB / 63.72 GiB physical, 32.38 GiB / 83.72 GiB committed, 4.82 GiB / 128.00 TiB virtual (current process)
+[11:07:52.814] info:    OS: Windows 10.0 Build 26200
+[11:07:52.814] info:  Initializing RtxOptions...
+[11:07:52.814] info:  Initializing RtxOption system layers...
+[11:07:52.814] info:  Attempting to parse option layer: dxvk.conf...
+[11:07:52.814] info:  Found config file: dxvk.conf
+[11:07:52.815] info:  Parsed config file.
+[11:07:52.824] info:  Found app config for executable: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\trl.exe
+[11:07:52.824] info:  Attempting to parse option layer: rtx.conf...
+[11:07:52.824] info:  Found config file: rtx.conf
+[11:07:52.824] info:  Parsed config file.
+[11:07:52.825] info:  Effective Combined Config for DXVK Options configuration:
+[11:07:52.825] info:    rtx.ignoreTextures = 0x0612102096033F88, 0x067E207478ADE05E, 0x2164293A60D148AC, 0x331B00BB03DA323E, 0x33D473C4262855FF, 0x3FEB8465B9DC9413, 0x4995D5E5B8092E7D, 0x679BA04B685CD5BC, 0x68ED95861B99F400, 0x68FA9486A9FD7F87, 0x8B8C9633E1DC6F97, 0xA2F5DE97B4A28175, 0xB41C5CE913F93FDF, 0xC9BD0ED9F1C0A77C, 0xD1D74660627960A4, 0xE4450D189CB19DF5, 0xFBDAAA5599C2FDEB, -0xC540ADD2F760E096, -0xE09AA3AE43AA8C54, -0xF955801F2F87A475
+[11:07:52.825] info:    rtx.fallbackLightRadius = 50
+[11:07:52.825] info:    rtx.skyBoxTextures = 0x0B09158C891640C8, 0x2EE3835B857C025E, 0x42DCF2A569FD0BE6, 0x443B45FB9971FC90, 0x44D55E05ADE9EEE6, 0x44FAE0A65974332C, 0x47004EC4568637A6, 0x78AD1D0EDA0FFC21, 0x8405ADDE0AE29A5F, 0x8D5CA9BB7FF6B65A, 0x9C215DF0816D1C30, 0xA3B42E9C2FC2F212, 0xAF8E060945471302, 0xB69E23770A63BF36, 0xBBB4BA6F340D9A95, -0x0E197C80AA28490C, -0x21E4FAB89C7887D0, -0x25059107D7B84BB0, -0x510D84060F4E18CE, -0xC540ADD2F760E096, -0xE09AA3AE43AA8C54, -0xF955801F2F87A475
+[11:07:52.825] info:    d3d9.shaderModel = 2
+[11:07:52.825] info:    d3d9.apitraceMode = True
+[11:07:52.825] info:    rtx.ignoreAllVertexColorBakedLighting = False
+[11:07:52.825] info:    rtx.terrainBaker.enableBaking = False
+[11:07:52.825] info:    rtx.ignoreBakedLightingTextures = -0x2164293A60D148AC, -0x38DB0EE2BFF49F84, -0x719AB67EC0E6D008, -0xA11751562ED6FC6E, -0xC540ADD2F760E096
+[11:07:52.825] info:    rtx.opacityMicromapIgnoreTextures = -0x2164293A60D148AC
+[11:07:52.825] info:    rtx.antiCulling.light.enable = False
+[11:07:52.825] info:    rtx.enableNearPlaneOverride = True
+[11:07:52.825] info:    rtx.hideInstanceTextures = 0xFB79B111C95A0EED, 0xFBDAAA5599C2FDEB, -0xF955801F2F87A475
+[11:07:52.825] info:    rtx.antiCulling.object.hashInstanceWithBoundingBoxHash = False
+[11:07:52.825] info:    rtx.fallbackLightRadiance = 100, 100, 100
+[11:07:52.825] info:    rtx.geometryAssetHashRuleString = positions,indices,texcoords,geometrydescriptor
+[11:07:52.825] info:    rtx.useVertexCapture = True
+[11:07:52.825] info:    rtx.particleTextures = 0x0E197C80AA28490C, 0x1F77767A315F65FB, 0x221A556C9736EA85, 0x27146299E02CF79C, 0x2EC6AE9AAA80B05A, 0x31B31D3AB3C37140, 0x39591E9E25E9CFF6, 0x41AA06C29F28D554, 0x48AC67BD53094E09, 0x49A961960744AF61, 0x5270F85EA9817A68, 0x606C6B542AFF18C0, 0x68295A716E62D172, 0x6E39778C1CB8E807, 0x7010FD7792E64531, 0x70EB2DBB527A3988, 0x719AB67EC0E6D008, 0x71C16A084E2FB45D, 0x7622E8266C79D61D, 0x80204293B65BCA73, 0x8C46C80087010631, 0x964D41F042D58EF5, 0xA6611BC5674BC05E, 0xBCD8A5811E1675E3, 0xCE15D99573B6B32D, 0xD40FDC70424380F0, 0xE2ADE145632A8E77, 0xF2B88098BD3D7872, 0xF609CB209B4B09F9, -0x76F834F0E3F0F9E3, -0xA11751562ED6FC6E, -0xC540ADD2F760E096
+[11:07:52.825] info:    rtx.captureInstances = True
+[11:07:52.825] info:    rtx.captureHotKey = Q
+[11:07:52.825] info:    rtx.antiCulling.object.numObjectsToKeep = 1000
+[11:07:52.825] info:    rtx.terrainTextures = -0xC540ADD2F760E096
+[11:07:52.825] info:    rtx.nearPlaneOverride = 0.1
+[11:07:52.825] info:    rtx.fallbackLightMode = 2
+[11:07:52.825] info:    rtx.antiCulling.light.fovScale = 2
+[11:07:52.825] info:    rtx.terrain.terrainAsDecalsAllowOverModulate = False
+[11:07:52.825] info:    rtx.smoothNormalsTextures = 0x0520235B05055A88, 0x05D2EDC907B7DE52, 0x095C778E3C307A5A, 0x0A2981B0A0AD7C72, 0x0BC118743D3D9ED4, 0x16620E97F527039A, 0x1A49BFC53A018346, 0x2BC635138D2E2CB2, 0x34024DE685135760, 0x38F6EBA5018B525A, 0x426D7754A8CD2CDB, 0x44C082346C766B99, 0x44FC45BBF96DFA69, 0x463C20AE577B75B2, 0x468CF02C8D6A724A, 0x47FB206B1739AB04, 0x4AF8D4C76F227DE0, 0x4B9902CBA956F355, 0x4D8439986D72BBFC, 0x53727A6391F01AC2, 0x54AFE9D4BA4CEF06, 0x57548EF3533B5BE6, 0x608E4B5DFDD18926, 0x6518071AAE98F37F, 0x6CAB684EDCF8D72A, 0x71822F341D1EA1D6, 0x76AB6A32D59D05E1, 0x7D78F852808859CF, 0x7F7ED52CB8EB395D, 0x80D599B3DABF5373, 0x8548EEECC390948D, 0x8557553318E207A5, 0x859FB7DAEA006B01, 0x897879A437864DC7, 0x8FA5A39457984AAB, 0x9195CD3CF3C9A7F6, 0x938066351F0D17D4, 0x987BA728F1101CFE, 0x9DD362EAC50D733B, 0x9DE11779694A482C, 0xA015CB46C4AD1870, 0xB09E05E93988F85A, 0xB2FAF80EA87158FA, 0xB30542A115D3783E, 0xB7894304C43F7A25, 0xB8F4C576B218C822, 0xB9BAC03CA2488451, 0xBD3D3CE8DDC92E95, 0xCA560F7F41C62678, 0xD0E43A967024B288, 0xD194EC9131AAC033, 0xDB7AE4E575DD7D1D, 0xDBFBBB36A881D4CC, 0xE3AA15421001F777, 0xE416CEB262420CB3, 0xE50BEF738648E692, 0xEB76AFC386843329, 0xEC91D12863ED908A, 0xF09806F099F1A24D, 0xFC558EA7229500C6, -0x6697EAF34E366D55
+[11:07:52.825] info:    rtx.antiCulling.light.numFramesToExtendLightLifetime = 60
+[11:07:52.825] info:    rtx.raytracedRenderTargetTextures = 0x0B63C9C87DB08FB3, 0x3FB65838F2469C64, 0x51CA6B174283718A, 0xB03F4729BF395BD6, 0xB6D41FD0113A7C66, 0xDB5172D09A485F8A, 0xE00529F572106A53
+[11:07:52.825] info:    rtx.antiCulling.antiCullingTextures = -0x38DB0EE2BFF49F84
+[11:07:52.825] info:    rtx.enableRaytracing = True
+[11:07:52.825] info:    rtx.ignoreAlphaOnTextures = -0x2164293A60D148AC, -0xA11751562ED6FC6E, -0xC540ADD2F760E096
+[11:07:52.825] info:    rtx.geometryGenerationHashRuleString = positions,indices,texcoords,geometrydescriptor,vertexlayout
+[11:07:52.825] info:    rtx.useWorldMatricesForShaders = True
+[11:07:52.825] info:    rtx.lightmapTextures = -0xC540ADD2F760E096, -0xF955801F2F87A475
+[11:07:52.825] info:    rtx.debugView.composite.compositeViewIdx = 0
+[11:07:52.825] info:    rtx.fallbackLightType = 1
+[11:07:52.825] info:    rtx.terrain.terrainAsDecalsEnabledIfNoBaker = True
+[11:07:52.825] info:    rtx.translucentMaterial.animatedWaterEnable = True
+[11:07:52.825] info:    rtx.antiCulling.object.enable = False
+[11:07:52.825] info:    rtx.antiCulling.object.fovScale = 1.5
+[11:07:52.825] info:    rtx.remixMenuKeyBinds = X
+[11:07:52.825] info:    rtx.debugView.debugViewIdx = 277
+[11:07:52.825] info:    rtx.antiCulling.object.enableHighPrecisionAntiCulling = False
+[11:07:52.825] info:    rtx.fallbackLightDirection = -52.1, -140.7, -70.5
+[11:07:52.825] info:    rtx.zUp = True
+[11:07:52.825] info:    rtx.orthographicIsUI = True
+[11:07:52.825] info:    rtx.decalTextures = 0x1EF264BB1D214B0C, 0x253172B82AEA2A23, 0x38DB0EE2BFF49F84, 0x4292AEF11DB1B9CB, 0x65214728A8BD6F78, 0x71CF0A6D072CDDD3, 0x9909FAB5D7426A1E, 0xA5B47A9EE01AADC3, 0xE15ED55004A7E1DD, 0xE40C7C8DCDECBC0D, 0xF507E500A0A55123, 0xF9ED9172DE7DC5DA, 0xFA6656BE454F6ACF, -0xBD12B73FB0C4628A, -0xC540ADD2F760E096, -0xF955801F2F87A475
+[11:07:52.825] info:    rtx.fusedWorldViewMode = 0
+[11:07:52.825] info:    rtx.ignoreLights = -0x719AB67EC0E6D008
+[11:07:52.825] info:    rtx.animatedWaterTextures = 0x2164293A60D148AC, 0x25059107D7B84BB0, 0x4020BAD5B3D6C4FD, 0x491E564847A4674E, 0x4FAD2F062B634D0D, 0x95011A686BA05DFF, 0x9A831D62E7BF35E2, 0xA11751562ED6FC6E, 0xC540ADD2F760E096
+[11:07:52.825] info:    rtx.skyBrightness = 2
+[11:07:52.825] info:    rtx.captureShowMenuOnHotkey = True
+[11:07:52.825] info:    rtx.opaqueMaterial.layeredWaterNormalEnable = True
+[11:07:52.825] info:    rtx.sceneScale = 0.0001
+[11:07:52.825] info:    rtx.skyAutoDetect = 0
+[11:07:52.825] info:    rtx.uiTextures = 0x03016D2FBBF5C65D, 0x13E05F68178FCB30, 0x2866C0CE081500C4, 0x302A2642B0F542EC, 0x5C8F4C8E3D1E5D25, 0x7DF761B4F666DFD8, 0x96EE0D6EEEC5CE75, 0xBB9EE9280316A2AE, 0xCE395FBF7B4E782D, 0xDF96FFFC95D5A287, 0xF2FDF39D187D6DBA, -0x2164293A60D148AC, -0x4D4F29734DDF70C3, -0x5270F85EA9817A68, -0x54AFE9D4BA4CEF06, -0x68295A716E62D172, -0x9960E266B5885A14, -0xBA7073ABAEF52D09, -0xC540ADD2F760E096, -0xDA3383E7B4FF3CCD, -0xE2ADE145632A8E77, -0xE5D76420CE142012
+[11:07:52.825] info:  Attempting to parse option layer: user.conf...
+[11:07:52.825] info:  Found config file: user.conf
+[11:07:52.826] info:  Parsed config file.
+[11:07:52.826] info:  RtxOption system layer initialization complete.
+[11:07:52.826] info:  Geometry generation hash rule:
+[11:07:52.826] info:  	positions
+[11:07:52.826] info:  	indices
+[11:07:52.826] info:  	texcoords
+[11:07:52.826] info:  	geometrydescriptor
+[11:07:52.826] info:  	vertexlayout
+[11:07:52.826] info:  Geometry asset hash rule:
+[11:07:52.826] info:  	positions
+[11:07:52.826] info:  	indices
+[11:07:52.826] info:  	texcoords
+[11:07:52.826] info:  	geometrydescriptor
+[11:07:52.826] info:  [RTX Neural Radiance Cache] Selected Ultra preset mode.
+[11:07:52.826] info:  [Migration] Migrating from rtx.dynamicDecalTextures to rtx.decalTextures
+[11:07:52.826] info:  [Deprecated Config] rtx.dynamicDecalTextures has been deprecated, we have moved all your textures from this list to rtx.decalTextures, no further action is required from you. Please re-save your rtx config to get rid of this message.
+[11:07:52.826] info:  [Migration] Migrating from rtx.nonOffsetDecalTextures to rtx.decalTextures
+[11:07:52.826] info:  [Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, we have moved all your textures from this list to rtx.decalTextures, no further action is required from you. Please re-save your rtx config to get rid of this message.
+[11:07:52.826] info:  [Migration] Migrating from rtx.singleOffsetDecalTextures to rtx.decalTextures
+[11:07:52.826] info:  [Deprecated Config] rtx.singleOffsetDecalTextures has been deprecated, we have moved all your textures from this list to rtx.decalTextures, no further action is required from you. Please re-save your rtx config to get rid of this message.
+[11:07:52.826] info:  [Migration] Migrating from rtx.particles.globalPreset.maxSpeed to rtx.particles.globalPreset.maxSpawnVelocity
+[11:07:52.826] info:  [Migration] Migrating from rtx.particles.globalPreset.maxSpeed to rtx.particles.globalPreset.maxTargetVelocity
+[11:07:52.826] info:  [Deprecated Config] rtx.particles.globalPreset.maxSpeed has been migrated to rtx.particles.globalPreset.maxSpawnVelocity and rtx.particles.globalPreset.maxTargetVelocity.Please re-save your config to get rid of this message.
+[11:07:52.826] info:  Effective RtxOption values (after all config layers and migrations):
+[11:07:52.826] info:    rtx.fallbackLightRadius = 50
+[11:07:52.826] info:    rtx.enableFirstBounceLobeProbabilityDithering = False
+[11:07:52.826] info:    rtx.dlssPreset = 2
+[11:07:52.826] info:    rtx.minOpaqueSpecularLobeSamplingProbability = 0.05
+[11:07:52.826] info:    rtx.antiCulling.object.hashInstanceWithBoundingBoxHash = False
+[11:07:52.826] info:    rtx.geometryAssetHashRuleString = positions,indices,texcoords,geometrydescriptor
+[11:07:52.826] info:    rtx.enableNearPlaneOverride = True
+[11:07:52.826] info:    rtx.captureHotKey = Q
+[11:07:52.826] info:    rtx.di.stealBoundaryPixelSamplesWhenOutsideOfScreen = False
+[11:07:52.826] info:    rtx.terrainTextures = -0xC540ADD2F760E096
+[11:07:52.826] info:    rtx.fallbackLightMode = 2
+[11:07:52.826] info:    rtx.neuralRadianceCache.trainingMaxPathBounces = 9
+[11:07:52.826] info:    rtx.antiCulling.light.fovScale = 2
+[11:07:52.826] info:    rtx.ignoreBakedLightingTextures = -0x2164293A60D148AC, -0x38DB0EE2BFF49F84, -0x719AB67EC0E6D008, -0xA11751562ED6FC6E, -0xC540ADD2F760E096
+[11:07:52.827] info:    rtx.di.initialSampleCount = 3
+[11:07:52.827] info:    rtx.smoothNormalsTextures = 0x0520235B05055A88, 0x05D2EDC907B7DE52, 0x095C778E3C307A5A, 0x0A2981B0A0AD7C72, 0x0BC118743D3D9ED4, 0x16620E97F527039A, 0x1A49BFC53A018346, 0x2BC635138D2E2CB2, 0x34024DE685135760, 0x38F6EBA5018B525A, 0x426D7754A8CD2CDB, 0x44C082346C766B99, 0x44FC45BBF96DFA69, 0x463C20AE577B75B2, 0x468CF02C8D6A724A, 0x47FB206B1739AB04, 0x4AF8D4C76F227DE0, 0x4B9902CBA956F355, 0x4D8439986D72BBFC, 0x53727A6391F01AC2, 0x54AFE9D4BA4CEF06, 0x57548EF3533B5BE6, 0x608E4B5DFDD18926, 0x6518071AAE98F37F, 0x6CAB684EDCF8D72A, 0x71822F341D1EA1D6, 0x76AB6A32D59D05E1, 0x7D78F852808859CF, 0x7F7ED52CB8EB395D, 0x80D599B3DABF5373, 0x8548EEECC390948D, 0x8557553318E207A5, 0x859FB7DAEA006B01, 0x897879A437864DC7, 0x8FA5A39457984AAB, 0x9195CD3CF3C9A7F6, 0x938066351F0D17D4, 0x987BA728F1101CFE, 0x9DD362EAC50D733B, 0x9DE11779694A482C, 0xA015CB46C4AD1870, 0xB09E05E93988F85A, 0xB2FAF80EA87158FA, 0xB30542A115D3783E, 0xB7894304C43F7A25, 0xB8F4C576B218C822, 0xB9BAC03CA2488451, 0xBD3D3CE8DDC92E95, 0xCA560F7F41C62678, 0xD0E43A967024B288, 0xD194EC9131AAC033, 0xDB7AE4E575DD7D1D, 0xDBFBBB36A881D4CC, 0xE3AA15421001F777, 0xE416CEB262420CB3, 0xE50BEF738648E692, 0xEB76AFC386843329, 0xEC91D12863ED908A, 0xF09806F099F1A24D, 0xFC558EA7229500C6, -0x6697EAF34E366D55
+[11:07:52.827] info:    rtx.antiCulling.light.numFramesToExtendLightLifetime = 60
+[11:07:52.827] info:    rtx.pathMaxBounces = 8
+[11:07:52.827] info:    rtx.antiCulling.antiCullingTextures = -0x38DB0EE2BFF49F84
+[11:07:52.827] info:    rtx.geometryGenerationHashRuleString = positions,indices,texcoords,geometrydescriptor,vertexlayout
+[11:07:52.827] info:    rtx.ignoreTextures = 0x0612102096033F88, 0x067E207478ADE05E, 0x2164293A60D148AC, 0x331B00BB03DA323E, 0x33D473C4262855FF, 0x3FEB8465B9DC9413, 0x4995D5E5B8092E7D, 0x679BA04B685CD5BC, 0x68ED95861B99F400, 0x68FA9486A9FD7F87, 0x8B8C9633E1DC6F97, 0xA2F5DE97B4A28175, 0xB41C5CE913F93FDF, 0xC9BD0ED9F1C0A77C, 0xD1D74660627960A4, 0xE4450D189CB19DF5, 0xFBDAAA5599C2FDEB, -0xC540ADD2F760E096, -0xE09AA3AE43AA8C54, -0xF955801F2F87A475
+[11:07:52.827] info:    rtx.fallbackLightType = 1
+[11:07:52.827] info:    rtx.terrain.terrainAsDecalsEnabledIfNoBaker = True
+[11:07:52.827] info:    rtx.defaultToAdvancedUI = True
+[11:07:52.827] info:    rtx.enableUnorderedEmissiveParticlesInIndirectRays = True
+[11:07:52.827] info:    rtx.antiCulling.object.fovScale = 1.5
+[11:07:52.827] info:    rtx.volumetrics.froxelGridResolutionScale = 3
+[11:07:52.827] info:    rtx.debugView.debugViewIdx = 277
+[11:07:52.827] info:    rtx.di.enableDenoiserConfidence = False
+[11:07:52.827] info:    rtx.skyBoxTextures = 0x0B09158C891640C8, 0x2EE3835B857C025E, 0x42DCF2A569FD0BE6, 0x443B45FB9971FC90, 0x44D55E05ADE9EEE6, 0x44FAE0A65974332C, 0x47004EC4568637A6, 0x78AD1D0EDA0FFC21, 0x8405ADDE0AE29A5F, 0x8D5CA9BB7FF6B65A, 0x9C215DF0816D1C30, 0xA3B42E9C2FC2F212, 0xAF8E060945471302, 0xB69E23770A63BF36, 0xBBB4BA6F340D9A95, -0x0E197C80AA28490C, -0x21E4FAB89C7887D0, -0x25059107D7B84BB0, -0x510D84060F4E18CE, -0xC540ADD2F760E096, -0xE09AA3AE43AA8C54, -0xF955801F2F87A475
+[11:07:52.827] info:    rtx.antiCulling.object.enableHighPrecisionAntiCulling = False
+[11:07:52.827] info:    rtx.di.disocclusionSamples = 2
+[11:07:52.827] info:    rtx.di.permutationSamplingNthFrame = 1
+[11:07:52.827] info:    rtx.fallbackLightDirection = -52.1, -140.7, -70.5
+[11:07:52.827] info:    rtx.ignoreAlphaOnTextures = -0x2164293A60D148AC, -0xA11751562ED6FC6E, -0xC540ADD2F760E096
+[11:07:52.827] info:    rtx.particleTextures = 0x0E197C80AA28490C, 0x1F77767A315F65FB, 0x221A556C9736EA85, 0x27146299E02CF79C, 0x2EC6AE9AAA80B05A, 0x31B31D3AB3C37140, 0x39591E9E25E9CFF6, 0x41AA06C29F28D554, 0x48AC67BD53094E09, 0x49A961960744AF61, 0x5270F85EA9817A68, 0x606C6B542AFF18C0, 0x68295A716E62D172, 0x6E39778C1CB8E807, 0x7010FD7792E64531, 0x70EB2DBB527A3988, 0x719AB67EC0E6D008, 0x71C16A084E2FB45D, 0x7622E8266C79D61D, 0x80204293B65BCA73, 0x8C46C80087010631, 0x964D41F042D58EF5, 0xA6611BC5674BC05E, 0xBCD8A5811E1675E3, 0xCE15D99573B6B32D, 0xD40FDC70424380F0, 0xE2ADE145632A8E77, 0xF2B88098BD3D7872, 0xF609CB209B4B09F9, -0x76F834F0E3F0F9E3, -0xA11751562ED6FC6E, -0xC540ADD2F760E096
+[11:07:52.827] info:    rtx.qualityDLSS = 3
+[11:07:52.827] info:    rtx.zUp = True
+[11:07:52.827] info:    rtx.di.enableBestLightSampling = False
+[11:07:52.827] info:    rtx.ignoreLights = -0x719AB67EC0E6D008
+[11:07:52.827] info:    rtx.demodulate.enableDirectLightBoilingFilter = False
+[11:07:52.827] info:    rtx.graphicsPreset = 4
+[11:07:52.827] info:    rtx.hideInstanceTextures = 0xFB79B111C95A0EED, 0xFBDAAA5599C2FDEB, -0xF955801F2F87A475
+[11:07:52.827] info:    rtx.animatedWaterTextures = 0x2164293A60D148AC, 0x25059107D7B84BB0, 0x4020BAD5B3D6C4FD, 0x491E564847A4674E, 0x4FAD2F062B634D0D, 0x95011A686BA05DFF, 0x9A831D62E7BF35E2, 0xA11751562ED6FC6E, 0xC540ADD2F760E096
+[11:07:52.827] info:    rtx.lightmapTextures = -0xC540ADD2F760E096, -0xF955801F2F87A475
+[11:07:52.827] info:    rtx.postFilterThreshold = 10
+[11:07:52.827] info:    rtx.russianRouletteMode = 1
+[11:07:52.827] info:    rtx.di.enableSampleStealing = False
+[11:07:52.827] info:    rtx.opacityMicromapIgnoreTextures = -0x2164293A60D148AC
+[11:07:52.827] info:    rtx.minOpaqueDiffuseLobeSamplingProbability = 0.05
+[11:07:52.827] info:    rtx.neeCache.enableModeAfterFirstBounce = 2
+[11:07:52.827] info:    rtx.skyBrightness = 2
+[11:07:52.827] info:    rtx.antiCulling.object.numObjectsToKeep = 1000
+[11:07:52.827] info:    rtx.usePostFilter = False
+[11:07:52.827] info:    rtx.fallbackLightRadiance = 100, 100, 100
+[11:07:52.827] info:    rtx.sceneScale = 0.0001
+[11:07:52.827] info:    rtx.decalTextures = 0x1EF264BB1D214B0C, 0x253172B82AEA2A23, 0x38DB0EE2BFF49F84, 0x4292AEF11DB1B9CB, 0x65214728A8BD6F78, 0x71CF0A6D072CDDD3, 0x9909FAB5D7426A1E, 0xA5B47A9EE01AADC3, 0xE15ED55004A7E1DD, 0xE40C7C8DCDECBC0D, 0xF507E500A0A55123, 0xF9ED9172DE7DC5DA, 0xFA6656BE454F6ACF, -0xBD12B73FB0C4628A, -0xC540ADD2F760E096, -0xF955801F2F87A475
+[11:07:52.827] info:    rtx.raytracedRenderTargetTextures = 0x0B63C9C87DB08FB3, 0x3FB65838F2469C64, 0x51CA6B174283718A, 0xB03F4729BF395BD6, 0xB6D41FD0113A7C66, 0xDB5172D09A485F8A, 0xE00529F572106A53
+[11:07:52.827] info:    rtx.remixMenuKeyBinds = X
+[11:07:52.827] info:    rtx.volumetrics.enable = False
+[11:07:52.827] info:    rtx.terrainBaker.enableBaking = False
+[11:07:52.827] info:    rtx.volumetrics.froxelDepthSlices = 48
+[11:07:52.827] info:    rtx.uiTextures = 0x03016D2FBBF5C65D, 0x13E05F68178FCB30, 0x2866C0CE081500C4, 0x302A2642B0F542EC, 0x5C8F4C8E3D1E5D25, 0x7DF761B4F666DFD8, 0x96EE0D6EEEC5CE75, 0xBB9EE9280316A2AE, 0xCE395FBF7B4E782D, 0xDF96FFFC95D5A287, 0xF2FDF39D187D6DBA, -0x2164293A60D148AC, -0x4D4F29734DDF70C3, -0x5270F85EA9817A68, -0x54AFE9D4BA4CEF06, -0x68295A716E62D172, -0x9960E266B5885A14, -0xBA7073ABAEF52D09, -0xC540ADD2F760E096, -0xDA3383E7B4FF3CCD, -0xE2ADE145632A8E77, -0xE5D76420CE142012
+[11:07:52.827] info:  Built-in extension providers:
+[11:07:52.827] info:    Win32 WSI
+[11:07:52.827] info:    OpenVR
+[11:07:52.827] info:    OpenXR
+[11:07:52.827] info:  OpenVR: could not open registry key, status 2
+[11:07:52.829] info:  OpenVR: Failed to locate module
+[11:07:52.912] info:  Enabled instance extensions:
+[11:07:52.912] info:    VK_KHR_external_memory_capabilities
+[11:07:52.912] info:    VK_KHR_external_semaphore_capabilities
+[11:07:52.912] info:    VK_KHR_get_physical_device_properties2
+[11:07:52.912] info:    VK_KHR_get_surface_capabilities2
+[11:07:52.912] info:    VK_KHR_surface
+[11:07:52.912] info:    VK_KHR_win32_surface
+[11:07:52.919] info:  Enabled Layer Names:
+[11:07:53.001] info:  D3D9: VK_FORMAT_D16_UNORM_S8_UINT -> VK_FORMAT_D24_UNORM_S8_UINT
+[11:07:53.001] info:  NVIDIA GeForce RTX 5090:
+[11:07:53.001] info:    Driver: 596.49.0
+[11:07:53.001] info:    Vulkan: 1.4.329
+[11:07:53.001] info:    Memory Heap[0]: 
+[11:07:53.001] info:      Size: 32187 MiB
+[11:07:53.001] info:      Flags: 0x1
+[11:07:53.002] info:      Memory Type[1]: Property Flags = 0x1
+[11:07:53.002] info:      Memory Type[4]: Property Flags = 0x7
+[11:07:53.002] info:    Memory Heap[1]: 
+[11:07:53.002] info:      Size: 32626 MiB
+[11:07:53.002] info:      Flags: 0x0
+[11:07:53.002] info:      Memory Type[0]: Property Flags = 0x0
+[11:07:53.002] info:      Memory Type[2]: Property Flags = 0x6
+[11:07:53.002] info:      Memory Type[3]: Property Flags = 0xe
+[11:07:53.002] info:  Process set as DPI aware
+[11:07:53.065] info:  Device properties:
+[11:07:53.065] info:    Device name:     : NVIDIA GeForce RTX 5090
+[11:07:53.065] info:    Vendor name:     : NVIDIA
+[11:07:53.065] info:    Device ID:       : 0x2b85
+[11:07:53.065] info:    Vendor ID:       : 0x10de
+[11:07:53.065] info:    Driver version   : 596.49.0
+[11:07:53.065] info:  Enabled device extensions:
+[11:07:53.065] info:    VK_EXT_4444_formats
+[11:07:53.065] info:    VK_EXT_calibrated_timestamps
+[11:07:53.065] info:    VK_EXT_conservative_rasterization
+[11:07:53.065] info:    VK_EXT_custom_border_color
+[11:07:53.065] info:    VK_EXT_depth_clip_enable
+[11:07:53.065] info:    VK_EXT_extended_dynamic_state
+[11:07:53.065] info:    VK_EXT_full_screen_exclusive
+[11:07:53.065] info:    VK_EXT_memory_priority
+[11:07:53.065] info:    VK_EXT_opacity_micromap
+[11:07:53.065] info:    VK_EXT_robustness2
+[11:07:53.065] info:    VK_EXT_shader_atomic_float
+[11:07:53.065] info:    VK_EXT_shader_demote_to_helper_invocation
+[11:07:53.065] info:    VK_EXT_shader_viewport_index_layer
+[11:07:53.065] info:    VK_EXT_transform_feedback
+[11:07:53.065] info:    VK_EXT_vertex_attribute_divisor
+[11:07:53.065] info:    VK_KHR_acceleration_structure
+[11:07:53.065] info:    VK_KHR_buffer_device_address
+[11:07:53.065] info:    VK_KHR_create_renderpass2
+[11:07:53.065] info:    VK_KHR_deferred_host_operations
+[11:07:53.065] info:    VK_KHR_depth_stencil_resolve
+[11:07:53.065] info:    VK_KHR_draw_indirect_count
+[11:07:53.065] info:    VK_KHR_driver_properties
+[11:07:53.065] info:    VK_KHR_external_memory
+[11:07:53.065] info:    VK_KHR_external_memory_win32
+[11:07:53.065] info:    VK_KHR_external_semaphore
+[11:07:53.065] info:    VK_KHR_external_semaphore_win32
+[11:07:53.065] info:    VK_KHR_image_format_list
+[11:07:53.065] info:    VK_KHR_maintenance4
+[11:07:53.065] info:    VK_KHR_pipeline_library
+[11:07:53.065] info:    VK_KHR_push_descriptor
+[11:07:53.065] info:    VK_KHR_ray_query
+[11:07:53.065] info:    VK_KHR_ray_tracing_pipeline
+[11:07:53.065] info:    VK_KHR_sampler_mirror_clamp_to_edge
+[11:07:53.065] info:    VK_KHR_shader_float16_int8
+[11:07:53.065] info:    VK_KHR_shader_float_controls
+[11:07:53.065] info:    VK_KHR_swapchain
+[11:07:53.065] info:    VK_KHR_synchronization2
+[11:07:53.065] info:    VK_NVX_binary_import
+[11:07:53.065] info:    VK_NVX_image_view_handle
+[11:07:53.065] info:    VK_NV_low_latency
+[11:07:53.065] info:    VK_NV_present_metering
+[11:07:53.065] info:    VK_NV_ray_tracing_invocation_reorder
+[11:07:53.065] info:  Device features:
+[11:07:53.065] info:    robustBufferAccess                     : 1
+[11:07:53.065] info:    fullDrawIndexUint32                    : 1
+[11:07:53.065] info:    imageCubeArray                         : 1
+[11:07:53.065] info:    independentBlend                       : 1
+[11:07:53.065] info:    geometryShader                         : 1
+[11:07:53.065] info:    tessellationShader                     : 0
+[11:07:53.065] info:    sampleRateShading                      : 1
+[11:07:53.065] info:    dualSrcBlend                           : 0
+[11:07:53.065] info:    logicOp                                : 0
+[11:07:53.065] info:    multiDrawIndirect                      : 0
+[11:07:53.065] info:    drawIndirectFirstInstance              : 0
+[11:07:53.065] info:    depthClamp                             : 1
+[11:07:53.065] info:    depthBiasClamp                         : 1
+[11:07:53.065] info:    fillModeNonSolid                       : 1
+[11:07:53.065] info:    depthBounds                            : 1
+[11:07:53.065] info:    multiViewport                          : 1
+[11:07:53.065] info:    samplerAnisotropy                      : 1
+[11:07:53.065] info:    textureCompressionBC                   : 1
+[11:07:53.065] info:    occlusionQueryPrecise                  : 1
+[11:07:53.065] info:    pipelineStatisticsQuery                : 1
+[11:07:53.065] info:    vertexPipelineStoresAndAtomics         : 1
+[11:07:53.065] info:    fragmentStoresAndAtomics               : 0
+[11:07:53.065] info:    shaderImageGatherExtended              : 0
+[11:07:53.065] info:    shaderStorageImageExtendedFormats      : 0
+[11:07:53.065] info:    shaderStorageImageReadWithoutFormat    : 0
+[11:07:53.065] info:    shaderStorageImageWriteWithoutFormat   : 1
+[11:07:53.065] info:    shaderClipDistance                     : 1
+[11:07:53.065] info:    shaderCullDistance                     : 1
+[11:07:53.065] info:    shaderFloat64                          : 0
+[11:07:53.065] info:    shaderInt64                            : 0
+[11:07:53.065] info:    variableMultisampleRate                : 0
+[11:07:53.065] info:    hostQueryReset                         : 1
+[11:07:53.065] info:    scalarBlockLayout                      : 1
+[11:07:53.065] info:    uniformBufferStandardLayout            : 1
+[11:07:53.065] info:  VK_EXT_4444_formats
+[11:07:53.065] info:    formatA4R4G4B4                         : 1
+[11:07:53.065] info:    formatA4B4G4R4                         : 1
+[11:07:53.065] info:  VK_EXT_custom_border_color
+[11:07:53.065] info:    customBorderColors                     : 1
+[11:07:53.065] info:    customBorderColorWithoutFormat         : 1
+[11:07:53.065] info:  VK_EXT_depth_clip_enable
+[11:07:53.065] info:    depthClipEnable                        : 1
+[11:07:53.065] info:  VK_EXT_extended_dynamic_state
+[11:07:53.065] info:    extendedDynamicState                   : 1
+[11:07:53.065] info:  VK_EXT_memory_priority
+[11:07:53.065] info:    memoryPriority                         : 1
+[11:07:53.065] info:  VK_EXT_robustness2
+[11:07:53.065] info:    robustBufferAccess2                    : 1
+[11:07:53.065] info:    robustImageAccess2                     : 0
+[11:07:53.065] info:    nullDescriptor                         : 1
+[11:07:53.065] info:  VK_EXT_shader_demote_to_helper_invocation
+[11:07:53.065] info:    shaderDemoteToHelperInvocation         : 1
+[11:07:53.065] info:  VK_EXT_transform_feedback
+[11:07:53.065] info:    transformFeedback                      : 1
+[11:07:53.065] info:    geometryStreams                        : 0
+[11:07:53.065] info:  VK_EXT_vertex_attribute_divisor
+[11:07:53.065] info:    vertexAttributeInstanceRateDivisor     : 1
+[11:07:53.065] info:    vertexAttributeInstanceRateZeroDivisor : 1
+[11:07:53.065] info:  VK_KHR_buffer_device_address
+[11:07:53.065] info:    bufferDeviceAddress                    : 1
+[11:07:53.066] info:  Queue families:
+[11:07:53.066] info:    Graphics : 0
+[11:07:53.066] info:    Transfer : 1
+[11:07:53.066] info:    Async Compute : 2
+[11:07:53.066] info:    Present : 2
+[11:07:53.233] info:  DXVK: Read 9605 valid state cache entries
+[11:07:53.233] info:  DXVK: Using 22 compiler threads
+[11:07:53.250] info:  USD plugin, Remix loaded!
+[11:07:53.250] warn:  usd plugins were not loaded
+[11:07:53.251] info:  [RTX info] Neural Radiance Cache: supported
+[11:07:55.310] info:  Reflex initialized successfully.
+[11:07:55.322] info:  Automatic Raytrace Mode Preset in use (Set rtx.raytraceModePreset to something other than Auto use a non-automatic preset)
+[11:07:55.322] info:  NVIDIA architecture detected, setting default raytrace modes to Trace Ray (Indirect Integrate) and Ray Query (GBuffer, Direct Integrate)
+[11:07:55.349] info:  [RTX info] Opacity Micromap: supported
+[11:07:55.350] info:  [RTX info] Shader Execution Reordering: supported
+[11:07:55.350] info:  [RTX info] Shader Execution Reordering: enabled
+[11:07:55.350] info:  CPU supports SIMD: AVX2
+[11:07:55.358] info:  D3D9DeviceEx::ResetSwapChain:
+[11:07:55.358] info:    Requested Presentation Parameters
+[11:07:55.358] info:      - Width:              2560
+[11:07:55.358] info:      - Height:             1440
+[11:07:55.358] info:      - Format:             D3D9Format::A8R8G8B8
+[11:07:55.358] info:      - Auto Depth Stencil: true
+[11:07:55.358] info:                  ^ Format: D3D9Format::D24S8
+[11:07:55.358] info:      - Windowed:           false
+[11:07:55.362] info:  Adding asset search path: c:\users\skurtyy\documents\github\almightybackups\nightraven1\vibe-reverse-engineering-claude\tomb raider legend\rtx-remix\mods\tombraiderlegendrtx\
+[11:07:55.379] info:  Presenter: Actual swap chain properties:
+[11:07:55.379] info:    Format:       VK_FORMAT_R8G8B8A8_UNORM
+[11:07:55.379] info:    Present mode: VK_PRESENT_MODE_IMMEDIATE_KHR
+[11:07:55.379] info:    Buffer size:  2560x1440
+[11:07:55.379] info:    Image count:  3
+[11:07:55.379] info:    Exclusive FS: 2
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_Ice.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_Lens.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCubeCamera_A01_01.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCubeDigital_A02_01.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCubeIsogrid_A01_01.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCubeIsogrid_A02_01.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCubeIsogrid_A03_01.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_RTX_CompanionCube_A1_01.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_RollCage.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_Healthpack.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_Space.usd
+[11:07:55.386] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_Pillow_A.usd
+[11:07:55.387] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_Ceramic.usd
+[11:07:55.387] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_Wood.usd
+[11:07:55.387] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCubeDigital_A01_01.usd
+[11:07:55.387] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_SteamPunk_A01.usd
+[11:07:55.387] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_ArtsAndCrafts.usd
+[11:07:55.387] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\TombRaiderLegendRTX\./SubUSDs/SM_Prop_CompanionCube_Cubus.usd
+[11:07:55.391] warn:  Overriding asset search path from: c:\users\skurtyy\documents\github\almightybackups\nightraven1\vibe-reverse-engineering-claude\tomb raider legend\rtx-remix\mods\tombraiderlegendrtx\ to: c:\users\skurtyy\documents\github\almightybackups\nightraven1\vibe-reverse-engineering-claude\tomb raider legend\rtx-remix\mods\pee\
+[11:07:55.402] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_Ice.usd
+[11:07:55.402] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_Lens.usd
+[11:07:55.402] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCubeCamera_A01_01.usd
+[11:07:55.402] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCubeDigital_A02_01.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCubeIsogrid_A01_01.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCubeIsogrid_A02_01.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCubeIsogrid_A03_01.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_RTX_CompanionCube_A1_01.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_RollCage.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_Healthpack.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_Space.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_Pillow_A.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_Ceramic.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_Wood.usd
+[11:07:55.403] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCubeDigital_A01_01.usd
+[11:07:55.404] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_SteamPunk_A01.usd
+[11:07:55.404] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_ArtsAndCrafts.usd
+[11:07:55.404] warn:  [SecretReplacement] Could not find stage: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\rtx-remix\mods\pee\./SubUSDs/SM_Prop_CompanionCube_Cubus.usd
+[11:07:55.578] info:  Presenter: Actual swap chain properties:
+[11:07:55.578] info:    Format:       VK_FORMAT_R8G8B8A8_UNORM
+[11:07:55.578] info:    Present mode: VK_PRESENT_MODE_FIFO_KHR
+[11:07:55.578] info:    Buffer size:  2560x1440
+[11:07:55.578] info:    Image count:  4
+[11:07:55.578] info:    Exclusive FS: 2
+[11:07:55.628] info:  No winproc detected, initiating bridge message channel for: 00000000003A0B04
+[11:07:55.847] info:  Presenter: Actual swap chain properties:
+[11:07:55.847] info:    Format:       VK_FORMAT_R8G8B8A8_UNORM
+[11:07:55.847] info:    Present mode: VK_PRESENT_MODE_FIFO_KHR
+[11:07:55.847] info:    Buffer size:  2560x1440
+[11:07:55.847] info:    Image count:  4
+[11:07:55.847] info:    Exclusive FS: 2
+[11:07:55.896] info:  [RTX-Compatibility-Info] Trying to raytrace but not detecting a valid camera.
+[11:07:56.057] info:  Message channel UWM_REMIX_BRIDGE_REGISTER_THREADPROC_MSG established.
+[11:08:01.438] info:  [RTX] Opacity Micromap: enabled
+[11:08:01.439] info:  RenderPass GBuffer Raytrace Mode: Ray Query (CS)
+[11:08:01.439] info:  RenderPass Integrate Direct Raytrace Mode: Ray Query (CS)
+[11:08:01.439] info:  RenderPass Integrate Indirect Raytrace Mode: Trace Ray (RGS)
+[11:08:01.465] info:  [RTX Neural Radiance Cache] NRC SDK: Loading the default network config data.
+[11:08:01.472] info:  [RTX Neural Radiance Cache] NRC v0.13 (22 January 2025) Context successfully initialized. 
+[11:08:01.478] info:  [RTX] Integrate Indirect Mode: Neural Radiance Cache - activated
+[11:08:01.606] info:  Presenter: Actual swap chain properties:
+[11:08:01.606] info:    Format:       VK_FORMAT_R8G8B8A8_UNORM
+[11:08:01.606] info:    Present mode: VK_PRESENT_MODE_IMMEDIATE_KHR
+[11:08:01.606] info:    Buffer size:  2560x1440
+[11:08:01.606] info:    Image count:  4
+[11:08:01.606] info:    Exclusive FS: 2
+[11:08:01.770] info:  Camera cut detected on frame 1306
+[11:08:01.771] info:  [RTX] Opacity Micromap: enabled
+[11:08:01.771] info:  [RTX Neural Radiance Cache] NRC SDK: Loading the default network config data.
+[11:08:01.775] info:  [RTX Neural Radiance Cache] NRC v0.13 (22 January 2025) Context successfully initialized. 
+[11:08:01.926] warn:  [RTX Opacity Micromap] Texcoord data is unavailable for calculateNumTexelsPerMicroTriangle(). Falling back to a conservative max value for estimated numTexelsPerMicroTriangle instead.
+Graphics config set (setup dialog bypassed)
+
+=== Main menu hash debug capture (view 277) ===
+Launching: NvRemixLauncher32.exe trl.exe
+Waiting for game window...
+  Found: Tomb Raider: Legend (hwnd=0x3a0b04)
+Window found. Waiting 20s for D3D/Remix init...
+  (Do not click or alt-tab)
+
+--- Main menu - Hash Debug: Main menu capture ---
+  Settling 120s (studio intros + menu)...
+  Menu selector: UP
+  Menu selector: DOWN
+  Menu selector: UP
+  Screenshot 1
+  Screenshot 2
+  Screenshot: Tomb Raider  Legend Screenshot 2026.05.19 - 11.10.19.90.png
+  Screenshot: Tomb Raider  Legend Screenshot 2026.05.19 - 11.10.16.83.png
+Collected 2 screenshots (last 30s, limit=2) to C:\Users\skurtyy\Documents\GitHub\TombRaiderLegendRTX-\patches\TombRaiderLegend\screenshots/
+
+=== Waiting for proxy diagnostics ===
+Proxy log appears ~50s after device creation.
+Proxy log ready: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\ffp_proxy.log
+Proxy log copied to C:\Users\skurtyy\Documents\GitHub\TombRaiderLegendRTX-\patches\TombRaiderLegend\ffp_proxy.log
+
+============================================================
+  MAIN MENU HASH CAPTURE COMPLETE
+  Crashed: False
+  Screenshots: 2
+============================================================

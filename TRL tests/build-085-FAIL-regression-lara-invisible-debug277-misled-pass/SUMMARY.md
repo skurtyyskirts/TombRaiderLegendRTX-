@@ -1,4 +1,11 @@
-# Build 085 — miracle — bind-pose VB cache stabilizes main-menu Lara hashes
+# Build 085 — RETRACTED (was: "miracle — bind-pose VB cache stabilizes main-menu Lara hashes")
+
+> **2026-05-19 retraction:** see `REGRESSION_NOTE.md`. Lara is invisible
+> in regular rendering mode under this build — the apparent hash-color
+> stability in debug view 277 was an artifact of Remix visualizing the
+> cached bind-pose mesh while the rasterizer rendered nothing for Lara.
+> The widened gate stripped the vertex shader the menu Lara needed for
+> skinning. Reverted in build 086.
 
 **Date:** 2026-05-19 10:38 CT
 **Source commit base:** dd5cb61 (build 081)

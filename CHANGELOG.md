@@ -6,7 +6,31 @@ Full build history: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
 
 ---
 
-## [2026-05-19 10:38] BUILD 085 MIRACLE — bind-pose VB cache stabilizes main-menu Lara hashes
+## [2026-05-19 11:08] BUILD 086 — revert variant-7 gate widening (build 085 retracted, Lara was invisible in raster)
+
+User manual test against the build 085 deployed bundle revealed Lara is
+**invisible** in regular rendering mode at the main menu. The widened
+gate (FLOAT3 + curDeclHasColor) routed her onto the null-VS FFP path, but
+her menu animation is driven by her vertex shader — stripping it
+collapses her geometry. Debug view 277 still visualized the cached
+bind-pose mesh, which produced the false PASS in builds 083-085.
+
+Build 086 restores `TRL_ForceSkinnedNullVS` to the original
+`posType==FLOAT3 && tcType==FLOAT4` gate, the same as build 081. The cache
+is inactive at the main menu under this restored gate — that is the
+intended behaviour. The build 084 lookup-key relaxation (`(nv, pc, tex0)`
+only) and the iteration-4 nv-cap raise (`<= 65535`) are kept; they are
+inert when the gate is restrictive and ready for the in-level scenes
+where Decl C is actually used.
+
+The build-085 test folder has been renamed
+`build-085-FAIL-regression-lara-invisible-debug277-misled-pass` with a
+`REGRESSION_NOTE.md` documenting the false-PASS mechanism. The `--main-
+menu` driver added in build 082 should be extended to capture both debug
+view 277 and view 0 before declaring PASS, so this kind of debug-view
+artifact can't fool the gate again.
+
+## [2026-05-19 10:38] BUILD 085 RETRACTED — was claimed as miracle, actually a regression
 
 End-to-end verification of the build 081 bind-pose VB cache against the main
 menu Lara model. Four iterations from the same dd5cb61 base; iter4 produced
