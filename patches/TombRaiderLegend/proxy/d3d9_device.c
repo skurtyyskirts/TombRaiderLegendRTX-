@@ -1070,18 +1070,26 @@ static int TRL_GetEffectiveFloat3Route(WrappedDevice *self) {
  * Lara-class bind-pose VB cache helpers
  * ---------------------------------------------------------------------- */
 
-/* Find a cache slot matching this draw's signature. Returns -1 if no match. */
+/* Find a cache slot matching this draw's signature. Returns -1 if no match.
+ *
+ * Build 084 (iteration 3): bvi and mi are dropped from the match key. TRL's
+ * CPU skinner writes each submesh into a streaming VB at a fresh offset every
+ * frame, so the per-frame (bvi, mi) tuple is effectively a frame counter and
+ * was preventing every lookup from hitting. Match is now (nv, pc, tex0) only,
+ * which uniquely identifies a Lara/movable submesh by vertex count + primitive
+ * count + bound texture. Captured (bvi, mi) are retained on the cache entry
+ * for diagnostics but not consulted by the lookup. */
 static int Lara_LookupCacheSlot(WrappedDevice *self,
     unsigned int nv, unsigned int pc, void *tex0,
     int bvi, unsigned int mi)
 {
     int i;
+    (void)bvi;
+    (void)mi;
     for (i = 0; i < self->laraVBCacheCount; i++) {
         if (self->laraVBCache[i].nv == nv
             && self->laraVBCache[i].pc == pc
             && self->laraVBCache[i].tex0 == tex0
-            && self->laraVBCache[i].bvi == bvi
-            && self->laraVBCache[i].mi == mi
             && self->laraVBCache[i].cachedVB != NULL)
             return i;
     }
@@ -3951,11 +3959,17 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
                     typedef int (__stdcall *FN_SetSS)(void*, unsigned int, void*, unsigned int, unsigned int);
                     void **vt = RealVtbl(self);
                     int swapNormDecl = (self->curDeclIsSkinned && self->curNormalizedSkinnedDecl != NULL);
+                    /* Build 085 (iteration 4): nv cap raised 16384 -> 65535.
+                     * Menu Lara/character super-mesh has nv=21845 (observed in
+                     * builds 083/084 ffp_proxy.log). 16384 cap was excluding the
+                     * only gate-firing mesh at the menu, so cache never engaged.
+                     * 65535 is the D3D9 16-bit index limit; 64 slots at worst
+                     * case 65535*stride24 ~= 100MB total. Acceptable. */
                     int useLaraCache = (forceSkinnedNullVS
                         && self->laraClassBindPoseCacheEnabled
                         && self->streamVB[0]
                         && self->streamStride[0] > 0
-                        && nv > 0 && nv <= 16384);
+                        && nv > 0 && nv <= 65535);
                     int laraSlot = -1;
 
                     ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, NULL);
