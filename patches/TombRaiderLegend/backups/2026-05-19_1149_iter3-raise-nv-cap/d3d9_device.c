@@ -3950,16 +3950,11 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
                     typedef int (__stdcall *FN_SetSS)(void*, unsigned int, void*, unsigned int, unsigned int);
                     void **vt = RealVtbl(self);
                     int swapNormDecl = (self->curDeclIsSkinned && self->curNormalizedSkinnedDecl != NULL);
-                    /* iter3: raised nv cap 16384 -> 65535. Main-menu FLOAT3 draws
-                     * pass NumVertices=21845 (whole-buffer count); the previous cap
-                     * silently excluded them. 65535 is the D3D9 uint16 NumVertices
-                     * ceiling, so worst-case snapshot is 65535*stride*64 slots which
-                     * fits comfortably (~100 MiB at stride 24). */
                     int useLaraCache = (forceSkinnedNullVS
                         && self->laraClassBindPoseCacheEnabled
                         && self->streamVB[0]
                         && self->streamStride[0] > 0
-                        && nv > 0 && nv <= 65535);
+                        && nv > 0 && nv <= 16384);
                     int laraSlot = -1;
 
                     ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, NULL);

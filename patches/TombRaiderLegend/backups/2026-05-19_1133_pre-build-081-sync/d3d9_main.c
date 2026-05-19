@@ -311,27 +311,14 @@ static void patch_null_crash_40D2AF(void) {
         MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (!cave) return;
 
-    /* Code cave:
-     *   mov esi, [ebp+0xc]   ; original (3B)
-     *   test esi, esi          ; null check (2B)
-     *   jz null_exit           ; bail if NULL (2B)
-     *   mov ecx, [esi+0x20]   ; original (3B)
-     *   jmp 0x40D2B2           ; resume (5B)
-     * null_exit:
-     *   xor eax, eax           ; return 0 (2B)
-     *   pop edi; pop esi; pop ebx  ; restore callee-saved (3B)
-     *   mov esp, ebp           ; undo 'and esp,0xFFFFFFF0' alignment (2B)
-     *   pop ebp                ; restore frame (1B)
-     *   ret                    ; cdecl return (1B)
-     */
     cave[i++] = 0x8B; cave[i++] = 0x75; cave[i++] = 0x0C;  /* mov esi,[ebp+0xc] */
     cave[i++] = 0x85; cave[i++] = 0xF6;                      /* test esi,esi */
-    cave[i++] = 0x74; jz_off = i; cave[i++] = 0x00;          /* jz null_exit (patched below) */
+    cave[i++] = 0x74; jz_off = i; cave[i++] = 0x00;          /* jz null_exit */
     cave[i++] = 0x8B; cave[i++] = 0x4E; cave[i++] = 0x20;  /* mov ecx,[esi+0x20] */
     cave[i++] = 0xE9;                                         /* jmp rel32 */
     rel = (int)0x0040D2B2 - (int)(cave + i + 4);
     *(int *)(cave + i) = rel; i += 4;
-    cave[jz_off] = (unsigned char)(i - (jz_off + 1));         /* patch jz offset */
+    cave[jz_off] = (unsigned char)(i - (jz_off + 1));
     cave[i++] = 0x33; cave[i++] = 0xC0;                      /* xor eax,eax */
     cave[i++] = 0x5F;                                         /* pop edi */
     cave[i++] = 0x5E;                                         /* pop esi */
@@ -340,7 +327,6 @@ static void patch_null_crash_40D2AF(void) {
     cave[i++] = 0x5D;                                         /* pop ebp */
     cave[i++] = 0xC3;                                         /* ret */
 
-    /* Overwrite 6 bytes at patch site: jmp cave + nop */
     VirtualProtect(site, 6, PAGE_EXECUTE_READWRITE, &oldProt);
     site[0] = 0xE9;
     *(int *)(site + 1) = (int)cave - (int)(site + 5);

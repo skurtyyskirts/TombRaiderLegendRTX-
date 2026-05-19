@@ -1196,14 +1196,9 @@ static void Lara_ReleaseCache(WrappedDevice *self)
  * because TRL's character decls carry no formal blend usages — confirmed by always-on
  * decl dumper, ffp_proxy.log build 081. */
 static int TRL_ForceSkinnedNullVS(WrappedDevice *self) {
-    /* iter2 widened gate: any FLOAT3-position draw, regardless of tex0 type.
-     * Build 081 required FLOAT3 + FLOAT4tex (gameplay character decl), but
-     * main-menu Lara uses FLOAT3 + FLOAT2tex (menu decl), so the original
-     * gate never fired in the main-menu test driver. Caching menu UI is
-     * harmless: UI bytes are stable per draw, so capture-then-replay is
-     * a no-op match. */
-    int isFloat3 = (self->curDeclPosType == D3DDECLTYPE_FLOAT3);
-    if (!isFloat3)
+    int isLaraClass = (self->curDeclPosType == D3DDECLTYPE_FLOAT3
+                       && self->curDeclTexcoordType == D3DDECLTYPE_FLOAT4);
+    if (!isLaraClass)
         return 0;
     return (self->skinnedFloat3RoutingMode == FLOAT3_ROUTE_NULL_VS) ? 1 : 0;
 }
@@ -3950,16 +3945,11 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
                     typedef int (__stdcall *FN_SetSS)(void*, unsigned int, void*, unsigned int, unsigned int);
                     void **vt = RealVtbl(self);
                     int swapNormDecl = (self->curDeclIsSkinned && self->curNormalizedSkinnedDecl != NULL);
-                    /* iter3: raised nv cap 16384 -> 65535. Main-menu FLOAT3 draws
-                     * pass NumVertices=21845 (whole-buffer count); the previous cap
-                     * silently excluded them. 65535 is the D3D9 uint16 NumVertices
-                     * ceiling, so worst-case snapshot is 65535*stride*64 slots which
-                     * fits comfortably (~100 MiB at stride 24). */
                     int useLaraCache = (forceSkinnedNullVS
                         && self->laraClassBindPoseCacheEnabled
                         && self->streamVB[0]
                         && self->streamStride[0] > 0
-                        && nv > 0 && nv <= 65535);
+                        && nv > 0 && nv <= 16384);
                     int laraSlot = -1;
 
                     ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, NULL);

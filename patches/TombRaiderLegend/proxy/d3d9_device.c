@@ -666,6 +666,8 @@ typedef struct WrappedDevice {
     int useVertexCaptureEffective; /* effective rtx.useVertexCapture (user.conf > rtx.conf) */
     int float3RoutingMode;         /* FLOAT3_ROUTE_* */
     int short4AnimatedRoutingMode; /* FLOAT3_ROUTE_* applied to animated/deformed SHORT4 draws */
+    int skinnedFloat3RoutingMode;  /* FLOAT3_ROUTE_* override for skinned FLOAT3 draws (Lara, NPCs);
+                                      null_vs forces bind-pose positions to Remix for stable asset hash */
 
     /* Sky isolation runtime config/state */
     int skyIsolationEnable;
@@ -700,6 +702,11 @@ typedef struct WrappedDevice {
     /* Diagnostic state */
     void *loggedDecls[32];
     int loggedDeclCount;
+    /* Always-on (DIAG-independent) first-encounter decl logger for hash-stability triage:
+     * capture every unique vertex declaration we see so we can correlate "what is Lara"
+     * with the classification flags the proxy applies. Capped to avoid log bloat. */
+    void *allDeclsSeen[16];
+    int allDeclsLoggedCount;
     void *diagTexSeen[8][32];
     int diagTexUniq[8];
     unsigned int createTick;
@@ -749,6 +756,32 @@ typedef struct WrappedDevice {
     int   normalizeSkinnedDecl;         /* INI toggle ([FFP] NormalizeSkinnedDecl), default 1 */
     void *curNormalizedSkinnedDecl;     /* normalized clone for the currently bound decl (NULL if N/A) */
     int   skinnedDeclsLogged;           /* count of unique skinned decls already dumped to ffp_proxy.log */
+    int   skinnedForcedNullVSLogged;    /* one-shot marker: first time a skinned draw was forced to null-VS */
+    int   vbFingerprintCount;           /* count of Lara-class VB fingerprints already dumped (capped) */
+
+    /* Lara-class bind-pose VB cache (model 2 fix for CPU-skinned movables):
+     * TRL CPU-skins character/movable meshes into a shared streaming VB whose bytes
+     * change per draw. Remix hashes whatever is in the VB at DIP time, so the asset
+     * hash drifts. To stabilize: snapshot the first VB content seen for each unique
+     * submesh signature (nv, pc, tex0, bvi, mi), then replay the cached snapshot on
+     * every subsequent draw matching that signature. The game's raster path is
+     * unaffected because we only redirect the DIP forwarded to d3d9_remix. */
+    struct {
+        unsigned int nv;
+        unsigned int pc;
+        void        *tex0;
+        int          bvi;
+        unsigned int mi;
+        void        *cachedVB;
+        unsigned int stride;
+        unsigned int hits;
+    } laraVBCache[64];
+    int laraVBCacheCount;
+    int laraVBCacheFullLogged;
+    int laraVBCacheFirstCaptureLogged;
+    unsigned int laraVBCacheHits;
+    unsigned int laraVBCacheMisses;
+    int laraClassBindPoseCacheEnabled; /* INI toggle */
 
     /* Last computed transforms (saved by TRL_ApplyTransformOverrides for reuse) */
     float savedWorld[16];
@@ -1031,6 +1064,148 @@ static int TRL_GetEffectiveFloat3Route(WrappedDevice *self) {
     if (self->float3RoutingMode == FLOAT3_ROUTE_SHADER)
         return FLOAT3_ROUTE_SHADER;
     return self->useVertexCaptureEffective ? FLOAT3_ROUTE_SHADER : FLOAT3_ROUTE_NULL_VS;
+}
+
+/* ----------------------------------------------------------------------
+ * Lara-class bind-pose VB cache helpers
+ * ---------------------------------------------------------------------- */
+
+/* Find a cache slot matching this draw's signature. Returns -1 if no match. */
+static int Lara_LookupCacheSlot(WrappedDevice *self,
+    unsigned int nv, unsigned int pc, void *tex0,
+    int bvi, unsigned int mi)
+{
+    int i;
+    for (i = 0; i < self->laraVBCacheCount; i++) {
+        if (self->laraVBCache[i].nv == nv
+            && self->laraVBCache[i].pc == pc
+            && self->laraVBCache[i].tex0 == tex0
+            && self->laraVBCache[i].bvi == bvi
+            && self->laraVBCache[i].mi == mi
+            && self->laraVBCache[i].cachedVB != NULL)
+            return i;
+    }
+    return -1;
+}
+
+/* Snapshot the current live VB content into a new private VB, store in cache.
+ * Returns the new slot index, or -1 on failure (cache full, alloc fail, lock fail). */
+static int Lara_CaptureCacheSlot(WrappedDevice *self,
+    unsigned int nv, unsigned int pc, void *tex0,
+    int bvi, unsigned int mi, unsigned int stride)
+{
+    typedef int (__stdcall *FN_CreateVB)(void*, unsigned int, unsigned long, unsigned long, unsigned int, void**, void*);
+    typedef int (__stdcall *FN_VBLock)(void*, unsigned int, unsigned int, void**, unsigned int);
+    typedef int (__stdcall *FN_VBUnlock)(void*);
+    typedef unsigned long (__stdcall *FN_Rel)(void*);
+    void *newVB = NULL;
+    void *srcVB;
+    void **srcVt;
+    void **dstVt;
+    unsigned char *srcData = NULL;
+    unsigned char *dstData = NULL;
+    unsigned int totalSize;
+    unsigned int srcOff;
+    int slot;
+
+    if (self->laraVBCacheCount >= 64) {
+        if (!self->laraVBCacheFullLogged) {
+            log_str("  LaraVB cache: capacity reached (64), subsequent unique submeshes stay on live VB\r\n");
+            self->laraVBCacheFullLogged = 1;
+        }
+        return -1;
+    }
+    if (!self->streamVB[0] || nv == 0 || stride == 0)
+        return -1;
+
+    totalSize = nv * stride;
+    if (((FN_CreateVB)RealVtbl(self)[SLOT_CreateVertexBuffer])(
+            self->pReal, totalSize,
+            D3DUSAGE_WRITEONLY, 0, D3DPOOL_MANAGED,
+            &newVB, NULL) != 0 || !newVB)
+        return -1;
+
+    srcVB = self->streamVB[0];
+    srcVt = *(void***)srcVB;
+    srcOff = self->streamOffset[0] + ((unsigned int)bvi + mi) * stride;
+    if (((FN_VBLock)srcVt[11])(srcVB, srcOff, totalSize,
+            (void**)&srcData, 0x10 /*D3DLOCK_READONLY*/) != 0 || !srcData) {
+        ((FN_Rel)(*(void***)newVB)[2])(newVB);
+        return -1;
+    }
+
+    dstVt = *(void***)newVB;
+    if (((FN_VBLock)dstVt[11])(newVB, 0, totalSize,
+            (void**)&dstData, 0) != 0 || !dstData) {
+        ((FN_VBUnlock)srcVt[12])(srcVB);
+        ((FN_Rel)(*(void***)newVB)[2])(newVB);
+        return -1;
+    }
+
+    memcpy(dstData, srcData, totalSize);
+
+    ((FN_VBUnlock)dstVt[12])(newVB);
+    ((FN_VBUnlock)srcVt[12])(srcVB);
+
+    slot = self->laraVBCacheCount++;
+    self->laraVBCache[slot].nv = nv;
+    self->laraVBCache[slot].pc = pc;
+    self->laraVBCache[slot].tex0 = tex0;
+    self->laraVBCache[slot].bvi = bvi;
+    self->laraVBCache[slot].mi = mi;
+    self->laraVBCache[slot].cachedVB = newVB;
+    self->laraVBCache[slot].stride = stride;
+    self->laraVBCache[slot].hits = 1;
+
+    if (!self->laraVBCacheFirstCaptureLogged) {
+        log_str("  LaraVB cache: first bind-pose snapshot committed\r\n");
+        log_int("    nv=", (int)nv);
+        log_int("    pc=", (int)pc);
+        log_int("    stride=", (int)stride);
+        self->laraVBCacheFirstCaptureLogged = 1;
+    }
+    return slot;
+}
+
+/* Release every cached VB at device-release time. */
+static void Lara_ReleaseCache(WrappedDevice *self)
+{
+    typedef unsigned long (__stdcall *FN_Rel)(void*);
+    int i;
+    for (i = 0; i < self->laraVBCacheCount; i++) {
+        if (self->laraVBCache[i].cachedVB) {
+            ((FN_Rel)(*(void***)self->laraVBCache[i].cachedVB)[2])(
+                self->laraVBCache[i].cachedVB);
+            self->laraVBCache[i].cachedVB = NULL;
+        }
+    }
+    self->laraVBCacheCount = 0;
+}
+
+/* Lara-class movable override: AUTO defers to the normal Float3 route. NULL_VS forces
+ * Lara/dummy/ball/NPC FLOAT3 draws onto the null-VS path so Remix sees bind-pose
+ * positions while the proxy applies the per-draw world matrix via SetTransform; the
+ * asset hash then stops drifting frame-to-frame.
+ *
+ * Gate signature: POSITION FLOAT3 + TEXCOORD0 FLOAT4. Observed at runtime as Decl C
+ * (used by Lara, the dummy, the soccer ball, NPCs). This is distinct from:
+ *   - Menu/UI FLOAT3 (Decl A): TEXCOORD0 FLOAT2 — left on shader route
+ *   - World geometry (Decl B): POSITION SHORT4 — already handled by S4 expansion
+ *
+ * The original gate (curDeclIsSkinned, requires BLENDWEIGHT+BLENDINDICES) never fires
+ * because TRL's character decls carry no formal blend usages — confirmed by always-on
+ * decl dumper, ffp_proxy.log build 081. */
+static int TRL_ForceSkinnedNullVS(WrappedDevice *self) {
+    /* iter2 widened gate: any FLOAT3-position draw, regardless of tex0 type.
+     * Build 081 required FLOAT3 + FLOAT4tex (gameplay character decl), but
+     * main-menu Lara uses FLOAT3 + FLOAT2tex (menu decl), so the original
+     * gate never fired in the main-menu test driver. Caching menu UI is
+     * harmless: UI bytes are stable per draw, so capture-then-replay is
+     * a no-op match. */
+    int isFloat3 = (self->curDeclPosType == D3DDECLTYPE_FLOAT3);
+    if (!isFloat3)
+        return 0;
+    return (self->skinnedFloat3RoutingMode == FLOAT3_ROUTE_NULL_VS) ? 1 : 0;
 }
 
 static int TRL_IsAnimatedOrDeformedShort4Draw(WrappedDevice *self, int animatedTex0) {
@@ -3076,6 +3251,8 @@ static unsigned long __stdcall WD_Release(WrappedDevice *self) {
         PinnedDraw_ReleaseAll(self);
         /* Release S4 expanded VBs — owned COM refs, must Release before HeapFree */
         S4_FlushVBCache(self);
+        /* Release Lara-class bind-pose snapshots */
+        Lara_ReleaseCache(self);
         SkyIso_Clear(self);
         /* Clear draw cache — releases COM refs held for anchor mesh replay */
 #if DRAW_CACHE_ENABLED
@@ -3689,8 +3866,60 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
                 }
                 self->drawsS4++;
             } else {
-                if ((self->curDeclPosType == D3DDECLTYPE_FLOAT3 && float3Route == FLOAT3_ROUTE_SHADER) ||
-                    shaderRouteShort4) {
+                /* Skinned-only override: SkinnedFloat3Route=null_vs forces skinned FLOAT3
+                 * draws (Lara, NPCs) onto the null-VS path so Remix captures bind-pose
+                 * positions and the asset hash stops drifting with animation. Scoped to
+                 * curDeclIsSkinned so non-skinned FLOAT3 paths (FX, particles) are untouched. */
+                int forceSkinnedNullVS = TRL_ForceSkinnedNullVS(self);
+                int takeShaderRoute = !forceSkinnedNullVS && (
+                    (self->curDeclPosType == D3DDECLTYPE_FLOAT3 && float3Route == FLOAT3_ROUTE_SHADER)
+                    || shaderRouteShort4);
+                if (forceSkinnedNullVS && !self->skinnedForcedNullVSLogged) {
+                    log_str("  MOVABLE forced null_vs: first occurrence (Lara-class FLOAT3+FLOAT4tex \xE2\x86\x92 bind-pose to Remix)\r\n");
+                    self->skinnedForcedNullVSLogged = 1;
+                }
+
+                /* Diagnostic: per-draw VB content fingerprint. Distinguishes CPU-skin
+                 * (bytes change per frame) from stable-VB + per-draw world matrix.
+                 * Capped at 40 dumps to keep log size sane. */
+                if (forceSkinnedNullVS && self->vbFingerprintCount < 40 && self->streamVB[0]) {
+                    typedef int (__stdcall *FN_Lock)(void*, unsigned int, unsigned int, void**, unsigned int);
+                    typedef int (__stdcall *FN_Unlock)(void*);
+                    void *vb = self->streamVB[0];
+                    void **vbVt = *(void***)vb;
+                    unsigned int firstVtxOff = self->streamOffset[0]
+                        + ((unsigned int)bvi + mi) * self->streamStride[0];
+                    unsigned int sampleBytes = 32;
+                    unsigned char *vbData = NULL;
+                    int hrL = ((FN_Lock)vbVt[11])(vb, firstVtxOff, sampleBytes,
+                        (void**)&vbData, 0x10 /* D3DLOCK_READONLY */);
+                    if (hrL == 0 && vbData) {
+                        float *fpos = (float*)vbData;
+                        unsigned int csum = 2166136261u;
+                        unsigned int b;
+                        for (b = 0; b < sampleBytes; b++) {
+                            csum ^= vbData[b];
+                            csum = csum * 16777619u;
+                        }
+                        ((FN_Unlock)vbVt[12])(vb);
+                        log_hex("  VBfp vb=", (unsigned int)vb);
+                        log_int("    drawIdx=", self->vbFingerprintCount);
+                        log_int("    nv=", (int)nv);
+                        log_int("    stride=", (int)self->streamStride[0]);
+                        log_hex("    csum=", csum);
+                        log_int("    x*1000=", (int)(fpos[0] * 1000.0f));
+                        log_int("    y*1000=", (int)(fpos[1] * 1000.0f));
+                        log_int("    z*1000=", (int)(fpos[2] * 1000.0f));
+                        self->vbFingerprintCount++;
+                    } else {
+                        if (self->vbFingerprintCount < 4) {
+                            log_hex("  VBfp lock failed vb=", (unsigned int)vb);
+                            log_hex("    hr=", (unsigned int)hrL);
+                            self->vbFingerprintCount++;
+                        }
+                    }
+                }
+                if (takeShaderRoute) {
                     /* Shader route: keep VS/PS bound for FLOAT3 draws and for animated/deformed
                      * SHORT4 draws that rely on shader-side UV scroll, morphing, or extra streams.
                      * For skinned draws we swap to a normalized decl (no BLENDWEIGHT/BLENDINDICES)
@@ -3710,16 +3939,71 @@ static int __stdcall WD_DrawIndexedPrimitive(WrappedDevice *self,
                     /* Legacy null-VS fallback for FLOAT3 when vertex capture is off (or forced).
                      * For skinned draws, swap to a normalized decl (no BLENDWEIGHT/BLENDINDICES)
                      * around the FFP-facing call so Remix's geometrydescriptor hash is stable
-                     * across LOD swaps and weight-type variance. */
+                     * across LOD swaps and weight-type variance.
+                     *
+                     * Lara-class bind-pose VB cache: when forceSkinnedNullVS is on and the cache
+                     * is enabled, snapshot or replay a private bind-pose VB so Remix hashes the
+                     * same bytes every frame for each submesh signature (nv, pc, tex0, bvi, mi).
+                     * Game raster path is unaffected; this only changes what Remix sees. */
                     typedef int (__stdcall *FN_SetVS)(void*, void*);
                     typedef int (__stdcall *FN_SetDecl)(void*, void*);
+                    typedef int (__stdcall *FN_SetSS)(void*, unsigned int, void*, unsigned int, unsigned int);
                     void **vt = RealVtbl(self);
                     int swapNormDecl = (self->curDeclIsSkinned && self->curNormalizedSkinnedDecl != NULL);
+                    /* iter3: raised nv cap 16384 -> 65535. Main-menu FLOAT3 draws
+                     * pass NumVertices=21845 (whole-buffer count); the previous cap
+                     * silently excluded them. 65535 is the D3D9 uint16 NumVertices
+                     * ceiling, so worst-case snapshot is 65535*stride*64 slots which
+                     * fits comfortably (~100 MiB at stride 24). */
+                    int useLaraCache = (forceSkinnedNullVS
+                        && self->laraClassBindPoseCacheEnabled
+                        && self->streamVB[0]
+                        && self->streamStride[0] > 0
+                        && nv > 0 && nv <= 65535);
+                    int laraSlot = -1;
+
                     ((FN_SetVS)vt[SLOT_SetVertexShader])(self->pReal, NULL);
                     TRL_ApplyFFPDrawState(self, 1);
                     if (swapNormDecl)
                         ((FN_SetDecl)vt[SLOT_SetVertexDeclaration])(self->pReal, self->curNormalizedSkinnedDecl);
-                    hr = ((FN)vt[SLOT_DrawIndexedPrimitive])(self->pReal, pt, bvi, mi, nv, si, pc);
+
+                    if (useLaraCache) {
+                        laraSlot = Lara_LookupCacheSlot(self, nv, pc,
+                            self->curTexture[0], bvi, mi);
+                        if (laraSlot >= 0) {
+                            self->laraVBCache[laraSlot].hits++;
+                            self->laraVBCacheHits++;
+                            if (self->laraVBCacheHits == 100 || self->laraVBCacheHits == 1000
+                                || self->laraVBCacheHits == 10000) {
+                                log_int("  LaraVB cache hits=", (int)self->laraVBCacheHits);
+                                log_int("    misses=", (int)self->laraVBCacheMisses);
+                                log_int("    entries=", (int)self->laraVBCacheCount);
+                            }
+                        } else {
+                            laraSlot = Lara_CaptureCacheSlot(self, nv, pc,
+                                self->curTexture[0], bvi, mi,
+                                self->streamStride[0]);
+                            self->laraVBCacheMisses++;
+                        }
+                    }
+
+                    if (laraSlot >= 0) {
+                        /* Replay: bind cached bind-pose VB, draw with adjusted indexing
+                         * (cached VB starts at vertex 0, so bvi=-(int)mi keeps bvi+mi=0). */
+                        ((FN_SetSS)vt[SLOT_SetStreamSource])(self->pReal, 0,
+                            self->laraVBCache[laraSlot].cachedVB, 0,
+                            self->laraVBCache[laraSlot].stride);
+                        hr = ((FN)vt[SLOT_DrawIndexedPrimitive])(self->pReal,
+                            pt, -(int)mi, mi, nv, si, pc);
+                        ((FN_SetSS)vt[SLOT_SetStreamSource])(self->pReal, 0,
+                            self->streamVB[0], self->streamOffset[0],
+                            self->streamStride[0]);
+                    } else {
+                        /* No cache (disabled, full, or capture failed): live VB. */
+                        hr = ((FN)vt[SLOT_DrawIndexedPrimitive])(self->pReal,
+                            pt, bvi, mi, nv, si, pc);
+                    }
+
                     if (swapNormDecl)
                         ((FN_SetDecl)vt[SLOT_SetVertexDeclaration])(self->pReal, self->lastDecl);
                     if (self->lastVS)
@@ -4469,6 +4753,41 @@ static int __stdcall WD_SetVertexDeclaration(WrappedDevice *self, void *pDecl) {
                     if (usage == D3DDECLUSAGE_COLOR && usageIdx == 0) {
                         self->curDeclHasColor = 1;
                         self->curDeclColorOff = offset;
+                    }
+                }
+
+                /* Always-on first-encounter dump of EVERY unique decl. Independent of
+                 * DIAG and of skinned classification so we can see what Lara/movables
+                 * actually look like even when the proxy decides they aren't "skinned". */
+                {
+                    int firstAllDecl = 1;
+                    int ad;
+                    for (ad = 0; ad < self->allDeclsLoggedCount; ad++) {
+                        if (self->allDeclsSeen[ad] == pDecl) { firstAllDecl = 0; break; }
+                    }
+                    if (firstAllDecl && self->allDeclsLoggedCount < 16) {
+                        unsigned int el3;
+                        self->allDeclsSeen[self->allDeclsLoggedCount++] = pDecl;
+                        log_hex("  DECL seen=", (unsigned int)pDecl);
+                        log_int("    numElems=", numElems);
+                        log_int("    hasBW=", hasBlendWeight);
+                        log_int("    hasBI=", hasBlendIndices);
+                        log_int("    posType=", self->curDeclPosType);
+                        log_int("    auxStreams=", self->curDeclUsesAuxStreams);
+                        for (el3 = 0; el3 < numElems; el3++) {
+                            unsigned char *el = &elemBuf[el3 * 8];
+                            unsigned short eStream = *(unsigned short*)&el[0];
+                            unsigned short eOff    = *(unsigned short*)&el[2];
+                            unsigned char  eType   = el[4];
+                            unsigned char  eUsage  = el[6];
+                            unsigned char  eUsageIdx = el[7];
+                            if (eStream == 0xFF || eStream == 0xFFFF) break;
+                            log_int("    s", eStream);
+                            log_int("    off=", eOff);
+                            log_int("    type=", eType);
+                            log_int("    usage=", eUsage);
+                            log_int("    uIdx=", eUsageIdx);
+                        }
                     }
                 }
 
@@ -5400,16 +5719,36 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     { int s; for (s = 0; s < 4; s++) { w->streamVB[s] = NULL; w->streamOffset[s] = 0; w->streamStride[s] = 0; } }
     { int t; for (t = 0; t < 8; t++) w->curTexture[t] = NULL; }
     w->loggedDeclCount = 0;
+    w->allDeclsLoggedCount = 0;
     w->strippedDeclCount = 0;
     w->skinnedNormDeclCount = 0;
     w->normalizeSkinnedDecl = 1;
     w->curNormalizedSkinnedDecl = NULL;
     w->skinnedDeclsLogged = 0;
+    w->skinnedForcedNullVSLogged = 0;
+    w->vbFingerprintCount = 0;
+    w->laraVBCacheCount = 0;
+    w->laraVBCacheFullLogged = 0;
+    w->laraVBCacheFirstCaptureLogged = 0;
+    w->laraVBCacheHits = 0;
+    w->laraVBCacheMisses = 0;
+    w->laraClassBindPoseCacheEnabled = 1;
+    { int lc; for (lc = 0; lc < 64; lc++) {
+        w->laraVBCache[lc].cachedVB = NULL;
+        w->laraVBCache[lc].nv = 0;
+        w->laraVBCache[lc].pc = 0;
+        w->laraVBCache[lc].tex0 = NULL;
+        w->laraVBCache[lc].bvi = 0;
+        w->laraVBCache[lc].mi = 0;
+        w->laraVBCache[lc].stride = 0;
+        w->laraVBCache[lc].hits = 0;
+    } }
     w->pinnedDrawCount = 0;
     w->pinnedCaptureComplete = 0;
     w->useVertexCaptureEffective = 1;
     w->float3RoutingMode = FLOAT3_ROUTE_AUTO;
     w->short4AnimatedRoutingMode = FLOAT3_ROUTE_AUTO;
+    w->skinnedFloat3RoutingMode = FLOAT3_ROUTE_AUTO;
     w->skyIsolationEnable = 1;
     w->skyCandidateMinVerts = 8000;
     w->skyCandidateMinPrims = 18;
@@ -5439,6 +5778,7 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
         char iniBuf[MAX_PATH];
         char float3Mode[32];
         char short4AnimatedMode[32];
+        char skinnedFloat3Mode[32];
         int skyEnable;
         int skyMinVerts;
         int skyMinPrims;
@@ -5453,7 +5793,11 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
         GetPrivateProfileStringA("FFP", "Short4AnimatedRoutingMode", "auto", short4AnimatedMode, 32, iniBuf);
         w->short4AnimatedRoutingMode = parse_float3_routing_mode(short4AnimatedMode);
 
+        GetPrivateProfileStringA("FFP", "SkinnedFloat3Route", "auto", skinnedFloat3Mode, 32, iniBuf);
+        w->skinnedFloat3RoutingMode = parse_float3_routing_mode(skinnedFloat3Mode);
+
         w->normalizeSkinnedDecl = GetPrivateProfileIntA("FFP", "NormalizeSkinnedDecl", 1, iniBuf) ? 1 : 0;
+        w->laraClassBindPoseCacheEnabled = GetPrivateProfileIntA("FFP", "LaraClassBindPoseCache", 1, iniBuf) ? 1 : 0;
 
         skyEnable = GetPrivateProfileIntA("Sky", "EnableIsolation", 1, iniBuf);
         skyMinVerts = GetPrivateProfileIntA("Sky", "CandidateMinVerts", 8000, iniBuf);
@@ -5480,11 +5824,15 @@ WrappedDevice* WrappedDevice_Create(void *pRealDevice) {
     if (w->short4AnimatedRoutingMode == FLOAT3_ROUTE_AUTO) log_str("  Short4AnimatedRoutingMode: auto\r\n");
     if (w->short4AnimatedRoutingMode == FLOAT3_ROUTE_NULL_VS) log_str("  Short4AnimatedRoutingMode: null_vs\r\n");
     if (w->short4AnimatedRoutingMode == FLOAT3_ROUTE_SHADER) log_str("  Short4AnimatedRoutingMode: shader\r\n");
+    if (w->skinnedFloat3RoutingMode == FLOAT3_ROUTE_AUTO) log_str("  SkinnedFloat3Route: auto (follows Float3RoutingMode)\r\n");
+    if (w->skinnedFloat3RoutingMode == FLOAT3_ROUTE_NULL_VS) log_str("  SkinnedFloat3Route: null_vs (Lara-class FLOAT3+FLOAT4tex forced to null-VS for stable asset hash)\r\n");
+    if (w->skinnedFloat3RoutingMode == FLOAT3_ROUTE_SHADER) log_str("  SkinnedFloat3Route: shader\r\n");
     if (TRL_GetEffectiveFloat3Route(w) == FLOAT3_ROUTE_SHADER)
         log_str("  Float3Route effective: shader\r\n");
     else
         log_str("  Float3Route effective: null_vs\r\n");
     log_int("  NormalizeSkinnedDecl: ", w->normalizeSkinnedDecl);
+    log_int("  LaraClassBindPoseCache: ", w->laraClassBindPoseCacheEnabled);
     log_int("  SkyIsolation: ", w->skyIsolationEnable);
     log_int("  SkyCandidateMinVerts: ", (int)w->skyCandidateMinVerts);
     log_int("  SkyCandidateMinPrims: ", (int)w->skyCandidateMinPrims);

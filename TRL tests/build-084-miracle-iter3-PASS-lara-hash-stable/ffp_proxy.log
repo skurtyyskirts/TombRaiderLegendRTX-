@@ -1,0 +1,566 @@
+=== DX9 Shader-to-FFP Proxy ===
+Remix enabled, loading: C:\Users\skurtyy\Documents\GitHub\AlmightyBackups\NightRaven1\Vibe-Reverse-Engineering-Claude\Tomb Raider Legend\d3d9_remix.dll
+Direct3DCreate9 called, SDK version: 0x00000020
+Real IDirect3D9: 0x0195D7A8
+WrappedD3D9 created at 0x01939080
+CreateDevice called
+  Adapter: 0x00000000
+  DeviceType: 0x00000001
+  BehaviorFlags (original): 0x00000050
+  BehaviorFlags (cleaned): 0x00000040
+  Real device: 0x01994E28
+  useVertexCapture (rtx.conf): 1
+WrappedDevice created with shader passthrough + transform override
+  Diag delay (ms): 50000
+  AlbedoStage: 0
+  Float3RoutingMode: auto
+  Short4AnimatedRoutingMode: auto
+  SkinnedFloat3Route: null_vs (Lara-class FLOAT3+FLOAT4tex forced to null-VS for stable asset hash)
+  Float3Route effective: shader
+  NormalizeSkinnedDecl: 1
+  LaraClassBindPoseCache: 1
+  SkyIsolation: 1
+  SkyCandidateMinVerts: 12000
+  SkyCandidateMinPrims: 30
+  SkyWarmupScenes: 300
+  Real device: 0x01994E28
+  View matrix addr: 0x010FC780
+  Proj matrix addr: 0x01002530
+  Wrapped device: 0x019C3D68
+CheckDeviceFormat: rejected FourCC format 0x31545844
+CheckDeviceFormat: rejected FourCC format 0x32545844
+CheckDeviceFormat: rejected FourCC format 0x33545844
+CheckDeviceFormat: rejected FourCC format 0x34545844
+CheckDeviceFormat: rejected FourCC format 0x35545844
+CheckDeviceFormat: rejected FourCC format 0x4C4C554E
+  DECL seen=0x01970A50
+    numElems=4
+    hasBW=0
+    hasBI=0
+    posType=2
+    auxStreams=0
+    s0
+    off=0
+    type=2
+    usage=0
+    uIdx=0
+    s0
+    off=12
+    type=4
+    usage=10
+    uIdx=0
+    s0
+    off=16
+    type=1
+    usage=5
+    uIdx=0
+  MOVABLE forced null_vs: first occurrence (Lara-class FLOAT3+FLOAT4tex → bind-pose to Remix)
+  VBfp vb=0x0196F110
+    drawIdx=0
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  LaraVB cache: first bind-pose snapshot committed
+    nv=21845
+    pc=18
+    stride=24
+  VBfp vb=0x0196F110
+    drawIdx=1
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=2
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=3
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=4
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=5
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=6
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=7
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=8
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=9
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=10
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=11
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+Transition: front-end scene observed scene=3
+ d=12
+ s4=0
+ f3=12
+
+  VBfp vb=0x0196F110
+    drawIdx=12
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=13
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=14
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=15
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=16
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=17
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=18
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=19
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=20
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=21
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=22
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=23
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=24
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=25
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=26
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=27
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=28
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=29
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=30
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=31
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=32
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=33
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=34
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=35
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=36
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=37
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=38
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  VBfp vb=0x0196F110
+    drawIdx=39
+    nv=21845
+    stride=24
+    csum=0x519E4D0B
+    x*1000=-3843
+    y*1000=-3080
+    z*1000=16000
+  LaraVB cache hits=100
+    misses=2
+    entries=2
+  LaraVB cache hits=1000
+    misses=2
+    entries=2
+TRL: memory patches deferred until level latch scene=600
+
+TRL: memory patches deferred until level latch scene=720
+
+  LaraVB cache hits=10000
+    misses=2
+    entries=2
+TRL: memory patches deferred until level latch scene=840
+
+TRL: memory patches deferred until level latch scene=960
+
+TRL: memory patches deferred until level latch scene=1080
+
+TRL: memory patches deferred until level latch scene=1200
+
+  DECL seen=0x1E361B80
+    numElems=5
+    hasBW=0
+    hasBI=0
+    posType=7
+    auxStreams=0
+    s0
+    off=0
+    type=7
+    usage=0
+    uIdx=0
+    s0
+    off=8
+    type=4
+    usage=10
+    uIdx=0
+    s0
+    off=12
+    type=6
+    usage=5
+    uIdx=0
+    s0
+    off=16
+    type=6
+    usage=5
+    uIdx=1
+Transition: gameplay scene latched scene=1289
+ d=599
+ s4=579
+ f3=20
+
+Transition: replay features remain disabled for TRL stability
+TRL: applying gameplay memory patches at scene=1290
+
+Game version verified: TRL Steam v1.0
+  Patched frustum threshold to -1e30
+  NOPed cull jumps: 11
+/11
+  Patched 0x4071D9: null-check trampoline via cave at 0xEDF9E3
+  Patched ProcessPendingRemovals: skip stale field_48 deref
+  NOPed sector visibility checks: 2
+/2
+  NOPed sector-object camera proximity filter at 0x0046B85A
+  NOPed sector already-rendered skip at 0x0046B7F2
+  NOPed frustum screen-size rejection at 0x0046C242 and 0x0046C25B
+  NOPed SectorPortalVisibility reset writes: 4
+/4 (bounds NOPed, flags clear preserved)
+  Patched cull mode globals to D3DCULL_NONE
+  Patched Light_VisibilityTest to always TRUE (0x60B050)
+  NOPed sector light count gate at 0xEC6337
+  NOPed RenderLights gate at 0x60E3B1
+  NOPed terrain cull gate at 0x0040AE3E
+  Patched MeshSubmit_VisibilityGate to always return 0 (0x454AB0)
+  Stamped post-sector enable flag to 1 (0xF12016)
+  NOPed stream unload gate write at 0x00415C51
+  Cleared post-sector/stream gate at 0x10024E8
+  NOPed post-sector bitmask cull at 0x0040E30F
+  NOPed post-sector distance cull at 0x0040E3B0
+  Stamped post-sector bitmask to 0xFFFFFFFF
+  NOPed Sector_SubmitObject gates: 2
+/2 (0x40C666 + 0x40C68B)
+  NOPed mesh eviction: SectorEviction x2 + ObjectTracker_Evict
+  NOPed _level writers: 2
+/2 (0x46CCB4 + 0x4E6DFA)
+  Patched RenderQueue_FrustumCull -> NoCull (0x40C430 -> 0x40C390)
+  Permanently unlocked data pages for per-scene stamps: 8
+/8
+SkyIso: warmup start scene=1290
+SkyIso: warmup scenes=300
+SkyIso: observed texture=0x1F607E50
+SkyIso: observed texture=0x1F608A90
+SkyIso: observed texture=0x1F156460
+SkyIso: observed texture=0x1F157960
+SkyIso: observed texture=0x1F156FC0
+SkyIso: observed texture=0x1F157500
+SkyIso: observed texture=0x1F156620
+SkyIso: observed texture=0x1F1576C0
+SkyIso: observed texture=0x1F1577A0
+SkyIso: observed texture=0x1F1568C0
+SkyIso: observed texture=0x1F157B20
+SkyIso: observed texture=0x1F157C00
+SkyIso: observed texture=0x1F156700
+SkyIso: observed texture=0x1F157340
+SkyIso: observed texture=0x1F1567E0
+SkyIso: observed texture=0x1F1569A0
+SkyIso: observed texture=0x1F156C40
+SkyIso: observed texture=0x1F156E00
+SkyIso: observed texture=0x1F608470
+SkyIso: observed texture=0x1F608010
+SkyIso: observed texture=0x1F607910
+SkyIso: observed texture=0x1F607F30
+SkyIso: observed texture=0x1F6079F0
+SkyIso: observed texture=0x1F608E10
+SkyIso: observed texture=0x1F6081D0
+SkyIso: observed texture=0x1F608550
+SkyIso: observed texture=0x1F608630
+SkyIso: observed texture=0x1F6080F0
+SkyIso: observed texture=0x1F608EF0
+SkyIso: observed texture=0x1F6089B0
+SkyIso: observed texture=0x1F607830
+SkyIso: observed texture=0x1F607C90
+SkyIso: observed texture=0x1F157180
+SkyIso: observed texture=0x1F608390
+SkyIso: observed texture=0x1F156540
+SkyIso: observed texture=0x1F157CE0
+SkyIso: observed texture=0x1F157420
+SkyIso: observed texture=0x1F158300
+SkyIso: observed texture=0x1F608B70
+SkyIso: observed texture=0x1F607D70
+SkyIso: observed texture=0x1F6090B0
+SkyIso: observed texture=0x1F6082B0
+SkyIso: observed texture=0x1F607AD0
+SkyIso: observed texture=0x1F608C50
+SkyIso: observed texture=0x1F608D30
+SkyIso: observed texture=0x1F607750
+SkyIso: observed texture=0x1F157A40
+SkyIso: observed texture=0x1F156D20
+SkyIso: observed texture=0x1F157F80
+SkyIso: observed texture=0x1F156A80
+SkyIso: observed texture=0x213F9A08
+SkyIso: skip animated texture draw
+SkyIso: observed texture=0x213F9768
+SkyIso: skip animated texture draw
+SkyIso: skip animated texture draw
+SkyIso: skip animated texture draw
+SkyIso: observed texture=0x213FAB88
+SkyIso: skip animated texture draw
+SkyIso: skip animated texture draw
+SkyIso: observed texture=0x213F95A8
+SkyIso: skip animated texture draw
+SkyIso: skip animated texture draw
+SkyIso: observed texture=0x213F9D88
+SkyIso: skip animated texture draw
+SkyIso: observed texture=0x213F9308
+SkyIso: skip animated texture draw
+SkyIso: skip animated texture draw
+SkyIso: skip animated texture draw
+SkyIso: skip animated texture draw
+SkyIso: observed texture=0x1F1575E0
+SkyIso: observed texture=0x1F608710
+SkyIso: observed texture=0x216A94D8
+SkyIso: skip animated texture draw
+SkyIso: observed texture=0x1F6088D0
+SkyIso: observed texture=0x1F1570A0
+SkyIso: observed texture=0x1F158220
+SkyIso: observed texture=0x1F158060
+SkyIso: observed texture=0x1F609270
+SkyIso: observed texture=0x1F609190
+SkyIso: observed texture=0x1F158140
+SkyIso: observed texture=0x213F94C8
+SkyIso: skip animated texture draw
+SkyIso: skip animated texture draw
+SkyIso: observed texture=0x1F6087F0
+SkyIso: observed texture=0x1F608FD0
+SkyIso: observed texture=0x1E18FD98
+SkyIso: observed texture=0x1D795AB0
+SkyIso: observed texture=0x1D6F0F60
+SkyIso: observed texture=0x1D794F50
+SkyIso: observed texture=0x1E18F078

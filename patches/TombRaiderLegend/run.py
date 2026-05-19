@@ -350,22 +350,35 @@ def require_live_game_window(hwnd=None, *, context="automation"):
 
 def launch_game(chapter=DEFAULT_LAUNCH_CHAPTER,
                 post_load_sequence=DEFAULT_POST_LOAD_SEQUENCE,
-                post_load_settle_seconds=DEFAULT_POST_LOAD_SETTLE_SECONDS):
-    route = stable_launcher.choose_launch_route(
-        force_continue=stable_launcher.has_checkpoint()
-    )
+                post_load_settle_seconds=DEFAULT_POST_LOAD_SETTLE_SECONDS,
+                navigate_to_peru=True):
+    """Launch TRL and return the game window handle.
 
+    Args:
+      navigate_to_peru: When True (default, for legacy callers like
+        live_capture.py), walk the menu macro into Peru gameplay.
+        When False, return immediately after window init — the caller
+        owns whatever it wants to do at the main menu.
+    """
     if (chapter != DEFAULT_LAUNCH_CHAPTER or
             post_load_sequence != DEFAULT_POST_LOAD_SEQUENCE or
             post_load_settle_seconds != DEFAULT_POST_LOAD_SETTLE_SECONDS):
         print("NOTE: Ignoring legacy chapter/cutscene launch parameters; "
-              "using stable Peru launcher route")
+              "menu navigation is owned by the stable launcher.")
 
-    print(f"Using stable launch route: {route}")
     try:
         hwnd = stable_launcher.launch_game()
-        stable_launcher.navigate_to_peru(hwnd, route=route)
-        return require_live_game_window(hwnd, context="Peru gameplay automation")
+        if navigate_to_peru:
+            route = stable_launcher.choose_launch_route(
+                force_continue=stable_launcher.has_checkpoint()
+            )
+            print(f"Using stable launch route: {route}")
+            stable_launcher.navigate_to_peru(hwnd, route=route)
+            context = "Peru gameplay automation"
+        else:
+            print("Skipping Peru navigation — staying at main menu.")
+            context = "main menu automation"
+        return require_live_game_window(hwnd, context=context)
     except SystemExit:
         raise
     except RuntimeError as exc:
@@ -401,48 +414,80 @@ def set_debug_view(idx):
         rtx_conf.write_text(new_text)
 
 
-def camera_pan_and_screenshot(hwnd, phase_name):
-    from livetools.gamectl import send_key, move_mouse_relative, focus_hwnd
+def main_menu_capture_lara_hashes(hwnd):
+    """Capture 2 screenshots of Lara's main-menu model in hash-debug view (277).
 
-    print(f"\n--- {phase_name}: Camera pan + screenshots ---")
-    hwnd = require_live_game_window(hwnd, context=f"{phase_name} camera automation")
+    Flow:
+      1. Focus the window.
+      2. Wait 2 minutes — lets studio intros finish and the main menu settle
+         with Lara's 3D model visible.
+      3. Press UP, DOWN, UP — exercises the main-menu selector so the menu
+         is definitely rendered and Lara holds a current pose.
+      4. Press `]` (NVIDIA capture hotkey) — screenshot 1.
+      5. Wait 3 seconds — animation idle may rewrite the skinning VB.
+      6. Press `]` — screenshot 2.
+
+    PASS criterion (evaluated externally by viewing the screenshots): the
+    coloured hash patches on Lara's body appear in matching positions across
+    both shots. Drift = unstable hash; identical = stable.
+
+    If Lara/menu is not visible in the captures, the assumption is that an
+    intro screen or settings prompt is blocking — increase the wait, or
+    prepend `send_key("ESCAPE")` / `send_key("RETURN")` before the wait to
+    dismiss the obstruction. See CHANGELOG / build notes for adjustments.
+    """
+    from livetools.gamectl import send_key, focus_hwnd
+
+    print("\n--- Main menu: Lara hash capture ---")
+    hwnd = require_live_game_window(hwnd, context="main menu capture")
     focus_hwnd(hwnd)
     time.sleep(0.5)
+
+    print("  Waiting 2 minutes for studio intros / main menu to settle...")
+    time.sleep(120)
+    hwnd = require_live_game_window(hwnd, context="main menu post-wait")
+
+    print("  Pressing UP / DOWN / UP (menu selector)...")
     capture_started_at = time.time()
+    send_key("UP", hold_ms=50)
+    time.sleep(0.4)
+    send_key("DOWN", hold_ms=50)
+    time.sleep(0.4)
+    send_key("UP", hold_ms=50)
+    time.sleep(1.0)  # let menu / pose settle
 
-    print("  Screenshot: center")
-    hwnd = require_live_game_window(hwnd, context=f"{phase_name} center screenshot")
+    print("  Screenshot: 1")
+    hwnd = require_live_game_window(hwnd, context="main menu screenshot 1")
     send_key("]", hold_ms=50)
-    time.sleep(1.5)
+    time.sleep(3.0)
 
-    print("  Camera pan: LEFT")
-    for _ in range(10):
-        hwnd = require_live_game_window(hwnd, context=f"{phase_name} left camera pan")
-        move_mouse_relative(-30, 0)
-        time.sleep(0.1)
-    time.sleep(0.5)
-
-    print("  Screenshot: left")
-    hwnd = require_live_game_window(hwnd, context=f"{phase_name} left screenshot")
+    print("  Screenshot: 2")
+    hwnd = require_live_game_window(hwnd, context="main menu screenshot 2")
     send_key("]", hold_ms=50)
-    time.sleep(1.5)
+    time.sleep(1.5)  # let the capture flush before kill
 
-    print("  Camera pan: RIGHT")
-    for _ in range(20):
-        hwnd = require_live_game_window(hwnd, context=f"{phase_name} right camera pan")
-        move_mouse_relative(30, 0)
-        time.sleep(0.1)
-    time.sleep(0.5)
-
-    print("  Screenshot: right")
-    hwnd = require_live_game_window(hwnd, context=f"{phase_name} right screenshot")
-    send_key("]", hold_ms=50)
-    time.sleep(1.5)
-
-    return collect_screenshots(max_age_seconds=30, limit=3, after_ts=capture_started_at)
+    return collect_screenshots(max_age_seconds=30, limit=2,
+                               after_ts=capture_started_at)
 
 
 def do_test_hash_stability(build_first=False, quick=False):
+    """Main-menu Lara hash stability test (single phase).
+
+    Workflow:
+      1. (optional) Build + deploy proxy.
+      2. Apply graphics registry config.
+      3. Suspend nightly mod override.
+      4. Set rtx debug view to 277 (geometry/asset hash visualization)
+         — kept ON for the whole run; we never flip to clean render.
+      5. Launch the game (no Peru navigation, stay at main menu).
+      6. main_menu_capture_lara_hashes: wait 2 min, UP/DOWN/UP, 2 screenshots
+         3 seconds apart.
+      7. Copy fresh proxy log.
+      8. Kill game.
+
+    PASS criterion (external): coloured hash patches on Lara appear in the
+    same body positions across both screenshots.
+    """
     if build_first:
         build_proxy()
 
@@ -450,42 +495,29 @@ def do_test_hash_stability(build_first=False, quick=False):
     disabled_nightly_mod = suspend_nightly_mod_override()
 
     try:
-        print("\n=== Phase 1: Hash Debug Screenshots (view 277) ===")
+        print("\n=== Main Menu Lara Hash Stability Test (debug view 277) ===")
         set_debug_view(277)
         kill_game()
-        phase1_started_at = time.time()
-        hwnd = launch_game()
-        hash_shots = camera_pan_and_screenshot(hwnd, "Phase 1 — Hash Debug")
+        phase_started_at = time.time()
+        hwnd = launch_game(navigate_to_peru=False)
+        screenshots = main_menu_capture_lara_hashes(hwnd)
 
-        log_ready = wait_for_fresh_proxy_log(after_ts=phase1_started_at)
+        log_ready = wait_for_fresh_proxy_log(after_ts=phase_started_at)
         if log_ready and PROXY_LOG.exists():
             dest = SCRIPT_DIR / "ffp_proxy.log"
             shutil.copy2(str(PROXY_LOG), str(dest))
             print(f"Proxy log copied to {dest}")
 
         from livetools.gamectl import find_hwnd_by_exe
-        crashed_p1 = not find_hwnd_by_exe("trl.exe")
-        if crashed_p1:
-            print("WARNING: Game crashed during Phase 1!")
+        crashed = not find_hwnd_by_exe("trl.exe")
+        if crashed:
+            print("WARNING: Game crashed during capture!")
         kill_game()
 
-        print("\n=== Phase 2: Clean Render Screenshots (view 0) ===")
-        set_debug_view(0)
-        hwnd2 = launch_game()
-        clean_shots = camera_pan_and_screenshot(hwnd2, "Phase 2 — Clean Render")
-
-        from livetools.gamectl import find_hwnd_by_exe
-        crashed_p2 = not find_hwnd_by_exe("trl.exe")
-        if crashed_p2:
-            print("WARNING: Game crashed during Phase 2!")
-        kill_game()
-
-        crashed = crashed_p1 or crashed_p2
         print(f"\n{'='*60}")
-        print(f"  HASH STABILITY TEST COMPLETE")
+        print(f"  MAIN MENU HASH STABILITY TEST COMPLETE")
         print(f"  Crashed: {crashed}")
-        print(f"  Hash debug screenshots: {len(hash_shots)}")
-        print(f"  Clean render screenshots: {len(clean_shots)}")
+        print(f"  Screenshots: {len(screenshots)}")
         print(f"{'='*60}")
 
         return not crashed

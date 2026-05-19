@@ -6,6 +6,154 @@ Full build history: [`docs/status/WHITEBOARD.md`](docs/status/WHITEBOARD.md)
 
 ---
 
+## [2026-05-19 11:53] BUILD 084 — MIRACLE — iter3 of build 081 cache+replay — PASS
+
+### Result
+**PASS**. Lara's hash-debug colours are pixel-identical across both
+screenshots. Cache fired with `hits=10000, misses=2, entries=2`.
+
+### What Changed
+Single literal in `useLaraCache` guard:
+```diff
+-    && nv > 0 && nv <= 16384);
++    && nv > 0 && nv <= 65535);
+```
+Edited both `proxy/d3d9_device.c:3953–3958` and
+`patches/TombRaiderLegend/proxy/d3d9_device.c:3953–3958`.
+Backup: `patches/TombRaiderLegend/backups/2026-05-19_1149_iter3-raise-nv-cap/`.
+
+### Proxy log telemetry
+```
+LaraVB cache: first bind-pose snapshot committed
+    nv=21845
+    pc=1
+    stride=24
+  LaraVB cache hits=100      misses=2  entries=2
+  LaraVB cache hits=1000     misses=2  entries=2
+  LaraVB cache hits=10000    misses=2  entries=2
+```
+2 unique signatures captured, ≥10000 replays, zero post-capture misses.
+
+### Iteration trace this session
+- 082 (iter1, as-shipped 081): FAIL — gate `FLOAT3+FLOAT4tex` never matched
+  any main-menu draw (decls are FLOAT3+FLOAT2tex and SHORT4 only).
+- 083 (iter2, widen gate to FLOAT3-only): FAIL — gate canary fires, but
+  inner `useLaraCache` guard `nv <= 16384` rejects main-menu draws which
+  pass `nv=21845` (whole-buffer NumVertices).
+- 084 (iter3, raise nv cap to 65535): **PASS**.
+
+### Side-finding worth keeping
+40 VB content fingerprint dumps all matched `csum=0x519E4D0B` with the
+same first-vertex position. Main-menu Lara's VB content is **statically
+stable**, not CPU-skinned. The hash drift in iters 1–2 was Remix
+recomputing geometry-asset hashes from different stream bindings
+per draw, not from changing vertex bytes. The cache fixes this by
+re-binding the same private VB on every replay so Remix always sees
+the same buffer pointer + content.
+
+### Open follow-ups (not in scope tonight)
+1. Gameplay-tier validation — this PASS is main-menu only. Re-test at Peru.
+2. The startup help-text `SkinnedFloat3Route: null_vs (Lara-class
+   FLOAT3+FLOAT4tex ...)` no longer matches semantics after iter2 widened
+   to FLOAT3-only. Cosmetic, low-priority.
+3. Build pipeline lints `proxy/` vs `patches/TombRaiderLegend/proxy/`
+   divergence — without the source-tree sync, build 081 was silently
+   bypassed on the first iter1 attempt.
+
+### Archive
+`TRL tests/build-084-miracle-iter3-PASS-lara-hash-stable/`
+
+---
+
+## [2026-05-19 11:46] BUILD 083 — iter2 of build 081 cache+replay — FAIL (nv cap blocks main-menu draws)
+
+### Result
+**FAIL**. Hashes still drift; cache still didn't fire (no `LaraVB cache hits=`
+in proxy log).
+
+### What Changed
+Variant 6 — widened `TRL_ForceSkinnedNullVS` gate. Before: `FLOAT3 pos &&
+FLOAT4 tex0` (gameplay character signature). After: `FLOAT3 pos` only,
+regardless of tex0 type. Edited both `proxy/d3d9_device.c:1198–1209` and
+`patches/TombRaiderLegend/proxy/d3d9_device.c:1198–1209`.
+Backup: `patches/TombRaiderLegend/backups/2026-05-19_1142_iter2-widen-gate/`.
+
+### Proxy log evidence
+- Line 57: `MOVABLE forced null_vs: first occurrence` — gate canary now fires.
+- Lines 58+: 40 `VBfp` dumps (cap), all with `vb=0x019277D0`, `nv=21845`,
+  `stride=24`, `csum=0x519E4D0B`. The VB content is stable across draws
+  (same checksum, same first-vertex position) — main-menu FLOAT3 draws are
+  not CPU-skinned; they're plain static menu geometry with per-draw world
+  matrix. This is a useful new fact about main-menu Lara.
+
+### Root cause
+`useLaraCache` carries a secondary guard `nv > 0 && nv <= 16384` inside the
+DIP path (`proxy/d3d9_device.c:3948–3953`). 21845 > 16384, so the cache
+short-circuit short-circuits the wrong way and the capture/lookup path
+never runs. The 16384 was a safety bound on snapshot alloc; bumping to
+65535 (uint16 max NumVertices) grows worst-case from ~24 MiB to ~96 MiB.
+
+### Decision
+Iter3 = raise the nv cap to 65535 — single literal change in
+`useLaraCache`. If the cache then fires but hashes still drift, fall back
+to variant 1 (drop tex0 from the cache key).
+
+### Archive
+`TRL tests/build-083-iter2-FAIL-nv-cap-blocked/`
+
+---
+
+## [2026-05-19 11:37] BUILD 082 — iter1 of build 081 cache+replay — FAIL (gate never fires on main menu)
+
+### Result
+**FAIL**. Both PASS criteria missed:
+1. Lara's hash-debug colors drift between screenshot 1 and screenshot 2.
+2. `ffp_proxy.log` contains zero `LaraVB cache hits=N` lines — the cache code path never executed.
+
+### Pre-iter1 source sync
+Repo has two parallel proxy trees: `proxy/` (canonical, build 081) and
+`patches/TombRaiderLegend/proxy/` (older build 080). `run.py` builds the
+patches/ tree. First test produced a `d3d9.dll` with `NormalizeSkinnedDecl`
+but no `laraVB` / `SkinnedFloat3Route` / `LaraClassBindPose` symbols. Synced
+root `proxy/{d3d9_device.c, d3d9_main.c, d3d9_wrapper.c, d3d9_skinning.h, proxy.ini, d3d9.def}`
+into `patches/TombRaiderLegend/proxy/`, kept the patches/ tree's `build.bat`
+because it carries the VS18 Community fallback the canonical script lacks.
+Backup at `patches/TombRaiderLegend/backups/2026-05-19_1133_pre-build-081-sync/`.
+
+### Decls observed at main menu (debug 277, debug delay 50000ms)
+- `DECL 0x017FBB90`: numElems=4, hasBW=0, hasBI=0, posType=2 (FLOAT3),
+  tex0 type=1 (FLOAT2). Menu/UI FLOAT3 decl. 12 front-end draws,
+  21 of the 600 gameplay-latched draws.
+- `DECL 0x1E09C218`: numElems=5, posType=7 (SHORT4), 4 tex elements.
+  World-geometry SHORT4. 579 of 600 gameplay-latched draws.
+
+Cap is 16 unique decls. Only 2 were ever emitted at the main menu, so
+these are exhaustive — every draw on the main menu uses one or the other.
+
+### Root cause
+`TRL_ForceSkinnedNullVS` (`proxy/d3d9_device.c:1198`) gates on
+`curDeclPosType==FLOAT3 && curDeclTexcoordType==FLOAT4` (the gameplay
+character "Lara-class" signature). Main-menu Lara is drawn through the
+menu FLOAT3+FLOAT2tex decl, not the gameplay decl, so the gate evaluates
+to 0 for every observed draw. The cache short-circuit
+`useLaraCache = (forceSkinnedNullVS && laraClassBindPoseCacheEnabled && ...)`
+is never entered. `MOVABLE forced null_vs: first occurrence` log line —
+the canary the gate is supposed to emit — never appears in the log.
+
+### Decision
+Briefing variants 1–4 modify the cache key (drop tex0, lock-after-N,
+snapshot whole VB, bump cache size) but cannot help when the gate above
+them never fires. Variant 5 (disable the cache) is a sanity check that
+also can't help. Variant 6 — widen the gate to all FLOAT3 draws
+regardless of texcoord type — is the only listed mutation that lets the
+cache code path execute under the current main-menu-only test driver.
+Proceeding directly to iter2 = variant 6.
+
+### Archive
+`TRL tests/build-082-iter1-FAIL-gate-never-fired/`
+
+---
+
 ## [2026-05-18 22:50] SESSION — Lara/movable hash drift root-caused, bind-pose VB cache+replay shipped (UNTESTED)
 
 ### Objective

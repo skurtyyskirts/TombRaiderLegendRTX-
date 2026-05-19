@@ -105,10 +105,8 @@ static int __stdcall W9_CheckDeviceType(WrappedD3D9 *self, unsigned int a, unsig
 
 static int __stdcall W9_CheckDeviceFormat(WrappedD3D9 *self, unsigned int a, unsigned int t, unsigned int f, unsigned long u, unsigned int rt, unsigned int cf) {
     typedef int (__stdcall *FN)(void*, unsigned int, unsigned int, unsigned int, unsigned long, unsigned int, unsigned int);
-    /* Reject FourCC formats (INTZ, NULL, etc.) — no VkFormat equivalent in dxvk-remix.
-     * Standard D3DFMT values are <= 0xFF; FourCC codes are 32-bit ASCII identifiers. */
+    /* Reject FourCC formats (INTZ, NULL, etc.) — no VkFormat equivalent in dxvk-remix. */
     if (cf > 0xFF) {
-        log_hex("CheckDeviceFormat: rejected FourCC format ", cf);
         return 0x88760868; /* D3DERR_NOTAVAILABLE */
     }
     return ((FN)REAL_VTBL(self)[10])(self->pReal, a, t, f, u, rt, cf);
@@ -152,11 +150,7 @@ static int __stdcall W9_CreateDevice(WrappedD3D9 *self, unsigned int adapter,
     log_hex("  Adapter: ", adapter);
     log_hex("  DeviceType: ", devType);
     log_hex("  BehaviorFlags (original): ", behFlags);
-
-    /* Strip PUREDEVICE (0x10) — dxvk-remix ignores it, but stripping ensures
-     * Get* calls work if anything queries state through us.
-     * Strip SOFTWARE_VERTEXPROCESSING (0x20) — SWVP adds overhead in dxvk-remix's
-     * late per-draw buffer upload path and provides no benefit to the proxy. */
+    /* Strip PUREDEVICE and SOFTWARE_VERTEXPROCESSING — game breaks without this */
     behFlags &= ~0x00000010; /* D3DCREATE_PUREDEVICE */
     behFlags &= ~0x00000020; /* D3DCREATE_SOFTWARE_VERTEXPROCESSING */
     log_hex("  BehaviorFlags (cleaned): ", behFlags);
